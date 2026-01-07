@@ -3,7 +3,9 @@ use std::{fmt::Display, sync::Arc};
 use gpui::{App, AppContext, Entity, RenderImage, SharedString};
 use std::path::PathBuf;
 
-use crate::{library::db::LibraryAccess, ui::data::Decode};
+use crate::{
+    library::db::LibraryAccess, settings::storage::SerializableQueueItem, ui::data::Decode,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueueItemData {
@@ -52,6 +54,20 @@ impl QueueItemData {
             db_album_id,
             data: cx.new(|_| None),
         }
+    }
+
+    /// Convert to a serializable format for persistence
+    pub fn to_serializable(&self) -> SerializableQueueItem {
+        SerializableQueueItem {
+            path: self.path.clone(),
+            db_id: self.db_id,
+            db_album_id: self.db_album_id,
+        }
+    }
+
+    /// Create from a serializable format
+    pub fn from_serializable(cx: &mut App, item: SerializableQueueItem) -> Self {
+        Self::new(cx, item.path, item.db_id, item.db_album_id)
     }
 
     /// Returns a copy of the UI data after ensuring that the metadata is loaded (or going to be

@@ -266,7 +266,7 @@ pub fn build_models(cx: &mut App, queue: Queue, storage_data: &StorageData) {
     let playback_state: Entity<PlaybackState> = cx.new(|_| PlaybackState::Stopped);
     let current_track: Entity<Option<CurrentTrack>> =
         cx.new(|_| storage_data.current_track.clone());
-    let shuffling: Entity<bool> = cx.new(|_| false);
+    let shuffling: Entity<bool> = cx.new(|_| storage_data.is_shuffled);
     let repeating: Entity<RepeatState> = cx.new(|cx| {
         let settings = cx.global::<SettingsGlobal>().model.read(cx);
 

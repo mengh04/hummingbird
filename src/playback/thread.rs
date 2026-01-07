@@ -94,7 +94,8 @@ pub struct PlaybackThread {
     queue: Arc<RwLock<Vec<QueueItemData>>>,
 
     /// If the queue is shuffled, this is a copy of the original (unshuffled) queue.
-    original_queue: Vec<QueueItemData>,
+    /// This is shared with the UI thread for persistence.
+    original_queue: Arc<RwLock<Vec<QueueItemData>>>,
 
     /// Whether or not the queue is shuffled.
     shuffle: bool,
@@ -125,11 +126,19 @@ impl PlaybackThread {
     /// Starts the playback thread and returns the created interface.
     pub fn start(
         queue: Arc<RwLock<Vec<QueueItemData>>>,
+        original_queue: Arc<RwLock<Vec<QueueItemData>>>,
+        queue_position: usize,
         settings: PlaybackSettings,
     ) -> PlaybackInterface {
         // TODO: use the refresh rate for the bounds
         let (cmd_tx, commands_rx) = unbounded_channel();
         let (events_tx, events_rx) = unbounded_channel();
+
+        // Detect if we're restoring a shuffled state by checking if original_queue has data
+        let is_shuffled = !original_queue
+            .read()
+            .expect("couldn't get original queue")
+            .is_empty();
 
         std::thread::Builder::new()
             .name("playback".to_string())
@@ -146,9 +155,9 @@ impl PlaybackThread {
                     resampler: None,
                     format: None,
                     queue,
-                    original_queue: Vec::new(),
-                    shuffle: false,
-                    queue_next: 0,
+                    original_queue,
+                    shuffle: is_shuffled,
+                    queue_next: queue_position + 1,
                     last_timestamp: u64::MAX,
                     pending_reset: false,
                     repeat: if settings.always_repeat {
@@ -608,7 +617,10 @@ impl PlaybackThread {
         drop(queue);
 
         if self.shuffle {
-            self.original_queue.push(item.clone());
+            self.original_queue
+                .write()
+                .expect("couldn't get original queue")
+                .push(item.clone());
         }
 
         if self.state == PlaybackState::Stopped {
@@ -717,7 +729,10 @@ impl PlaybackThread {
             queue.append(&mut shuffled_paths);
             drop(queue);
 
-            self.original_queue.append(&mut paths);
+            self.original_queue
+                .write()
+                .expect("couldn't get original queue")
+                .append(&mut paths);
         } else {
             queue.append(&mut paths);
             drop(queue);
@@ -795,8 +810,13 @@ impl PlaybackThread {
         }
 
         let queue = self.queue.read().expect("couldn't get the queue");
-        let path = self.original_queue[index].get_path();
+        let original_queue = self
+            .original_queue
+            .read()
+            .expect("couldn't get original queue");
+        let path = original_queue[index].get_path();
         let pos = queue.iter().position(|a| a.get_path() == path);
+        drop(original_queue);
         drop(queue);
 
         if let Some(pos) = pos {
@@ -817,7 +837,10 @@ impl PlaybackThread {
             *queue = shuffled_paths;
 
             drop(queue);
-            self.original_queue = paths;
+            *self
+                .original_queue
+                .write()
+                .expect("couldn't get original queue") = paths;
         } else {
             *queue = paths;
             drop(queue);
@@ -834,7 +857,10 @@ impl PlaybackThread {
     /// Clear the current queue.
     fn clear_queue(&mut self) {
         self.queue.write().expect("couldn't get the queue").clear();
-        self.original_queue = Vec::new();
+        self.original_queue
+            .write()
+            .expect("couldn't get original queue")
+            .clear();
         self.queue_next = 0;
 
         self.events_tx
@@ -864,19 +890,28 @@ impl PlaybackThread {
             // find the current track in the unshuffled queue
             let index = if self.queue_next > 0 {
                 let path = queue[self.queue_next - 1].get_path();
-                let index = self
+                let original_queue = self
                     .original_queue
+                    .read()
+                    .expect("couldn't get original queue");
+                let index = original_queue
                     .iter()
                     .position(|x| x.get_path() == path)
                     .unwrap();
+                drop(original_queue);
                 self.queue_next = index + 1;
                 index
             } else {
                 0
             };
 
-            swap(&mut self.original_queue, &mut queue);
-            self.original_queue = Vec::new();
+            let mut original_queue = self
+                .original_queue
+                .write()
+                .expect("couldn't get original queue");
+            swap(&mut *original_queue, &mut queue);
+            original_queue.clear();
+            drop(original_queue);
             self.shuffle = false;
             drop(queue);
 
@@ -892,9 +927,30 @@ impl PlaybackThread {
                     .expect("unable to send event");
             }
         } else {
-            self.original_queue.clone_from(&queue);
+            let mut original_queue = self
+                .original_queue
+                .write()
+                .expect("couldn't get original queue");
+            original_queue.clone_from(&queue);
+            drop(original_queue);
             let length = queue.len();
-            queue[self.queue_next..length].shuffle(&mut rng());
+
+            // Calculate the start index for shuffling
+            // We need to shuffle from the *next* track onwards, not including the current one
+            let start = if self.queue_next > 0 {
+                // If queue_next might be storing "current index" instead of "next index",
+                // we ensure we start from the track AFTER the current one
+                self.queue_next
+            } else {
+                // No current track, shuffle from the beginning
+                0
+            };
+
+            // Only shuffle if there's something to shuffle
+            if start < length {
+                queue[start..length].shuffle(&mut rng());
+            }
+
             self.shuffle = true;
             let queue_next = self.queue_next;
             drop(queue);

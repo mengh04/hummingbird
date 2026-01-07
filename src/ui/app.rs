@@ -335,9 +335,26 @@ pub fn run() -> anyhow::Result<()> {
             find_fonts(cx).expect("unable to load fonts");
             register_actions(cx);
 
-            let queue: Arc<RwLock<Vec<QueueItemData>>> = Arc::new(RwLock::new(Vec::new()));
             let storage = Storage::new(data_dir.join("app_data.json"));
             let storage_data = storage.load_or_default();
+
+            // Restore queue from saved state
+            let restored_queue: Vec<QueueItemData> = storage_data
+                .queue
+                .iter()
+                .map(|item| QueueItemData::from_serializable(cx, item.clone()))
+                .collect();
+
+            // Restore original_queue from saved state
+            let restored_original_queue: Vec<QueueItemData> = storage_data
+                .original_queue
+                .iter()
+                .map(|item| QueueItemData::from_serializable(cx, item.clone()))
+                .collect();
+
+            let queue: Arc<RwLock<Vec<QueueItemData>>> = Arc::new(RwLock::new(restored_queue));
+            let original_queue: Arc<RwLock<Vec<QueueItemData>>> =
+                Arc::new(RwLock::new(restored_original_queue));
 
             setup_theme(cx, data_dir.join("theme.json"));
             setup_settings(cx, data_dir.join("settings.json"));
@@ -346,7 +363,7 @@ pub fn run() -> anyhow::Result<()> {
                 cx,
                 models::Queue {
                     data: queue.clone(),
-                    position: 0,
+                    position: storage_data.queue_position,
                 },
                 &storage_data,
             );
@@ -374,9 +391,16 @@ pub fn run() -> anyhow::Result<()> {
             })
             .detach();
 
-            let mut playback_interface: PlaybackInterface =
-                PlaybackThread::start(queue, playback_settings);
+            let mut playback_interface: PlaybackInterface = PlaybackThread::start(
+                queue.clone(),
+                original_queue.clone(),
+                storage_data.queue_position,
+                playback_settings,
+            );
             playback_interface.start_broadcast(cx);
+
+            // Note: shuffle state is already set in PlaybackThread if original_queue is not empty
+            // No need to toggle_shuffle() here as it would re-shuffle the queue
 
             if !parse_args_and_prepare(cx, &playback_interface)
                 && let Some(track) = storage_data.current_track
@@ -429,16 +453,46 @@ pub fn run() -> anyhow::Result<()> {
                             let current_track = cx.global::<PlaybackInfo>().current_track.clone();
                             let sidebar_width = cx.global::<Models>().sidebar_width.clone();
                             let queue_width = cx.global::<Models>().queue_width.clone();
+                            let queue_model = cx.global::<Models>().queue.clone();
+                            let shuffling = cx.global::<PlaybackInfo>().shuffling.clone();
+                            let queue_shared = queue.clone();
+                            let original_queue_shared = original_queue.clone();
                             move |_, cx| {
                                 let current_track = current_track.read(cx).clone();
                                 let sidebar_width: f32 = (*sidebar_width.read(cx)).into();
                                 let queue_width: f32 = (*queue_width.read(cx)).into();
+                                let is_shuffled = *shuffling.read(cx);
+
+                                // Serialize the queue from playback thread
+                                let queue_items: Vec<_> = queue_shared
+                                    .read()
+                                    .unwrap()
+                                    .iter()
+                                    .map(|item| item.to_serializable())
+                                    .collect();
+
+                                // Serialize the original_queue from playback thread
+                                let original_queue_items: Vec<_> = original_queue_shared
+                                    .read()
+                                    .unwrap()
+                                    .iter()
+                                    .map(|item| item.to_serializable())
+                                    .collect();
+
+                                let queue_data = queue_model.read(cx);
+                                let queue_position = queue_data.position;
+                                let _ = queue_data;
+
                                 let storage = storage.clone();
                                 cx.background_executor().spawn(async move {
                                     storage.save(&StorageData {
                                         current_track,
                                         sidebar_width,
                                         queue_width,
+                                        queue: queue_items,
+                                        original_queue: original_queue_items,
+                                        queue_position,
+                                        is_shuffled,
                                     });
                                 })
                             }
