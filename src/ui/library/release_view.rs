@@ -187,6 +187,8 @@ impl Render for ReleaseView {
                                     .overflow_x_hidden()
                                     .child(
                                         div()
+                                            .text_ellipsis()
+                                            .overflow_x_hidden()
                                             .when_some(self.artist_name.clone(), |this, artist| {
                                                 this.child(artist)
                                             }),
