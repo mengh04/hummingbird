@@ -237,7 +237,7 @@ fn play_track_now(cx: &mut App, track: &Track) {
     playback_interface.jump(queue_length);
 }
 
-fn play_track_next(cx: &mut App, track: &Track) {
+pub fn play_track_next(cx: &mut App, track: &Track) {
     let data = QueueItemData::new(cx, track.location.clone(), Some(track.id), track.album_id);
     let queue_position = cx.global::<Models>().queue.read(cx).position;
     cx.global::<PlaybackInterface>()

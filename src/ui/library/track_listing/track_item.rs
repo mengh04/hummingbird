@@ -8,6 +8,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::ui::components::drag_drop::{DragPreview, TrackDragData};
 use crate::ui::components::icons::{STAR, STAR_FILLED, icon};
+use crate::ui::library::context_menus::play_track_next;
 use crate::ui::library::context_menus::track::TrackContextMenu;
 use crate::ui::models::PlaylistEvent;
 use crate::{
@@ -184,6 +185,14 @@ impl Render for TrackItem {
                                             plid,
                                             queue_context.clone(),
                                         )
+                                    }
+                                })
+                                .on_aux_click({
+                                    let track = self.track.clone();
+                                    move |ev, _, cx| {
+                                        if ev.is_middle_click() {
+                                            play_track_next(cx, &track);
+                                        }
                                     }
                                 })
                             })
