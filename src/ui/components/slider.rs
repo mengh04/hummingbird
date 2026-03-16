@@ -55,7 +55,7 @@ impl IntoElement for Slider {
 impl Element for Slider {
     type RequestLayoutState = ();
 
-    type PrepaintState = ();
+    type PrepaintState = Bounds<Pixels>;
 
     fn id(&self) -> Option<ElementId> {
         self.id.clone()
@@ -86,7 +86,15 @@ impl Element for Slider {
         window: &mut Window,
         _: &mut App,
     ) -> Self::PrepaintState {
-        self.hitbox = Some(window.insert_hitbox(bounds, HitboxBehavior::Normal));
+        let hitbox_bounds = bounds.extend(Edges {
+            top: px(4.0),
+            bottom: px(4.0),
+            ..Default::default()
+        });
+
+        self.hitbox = Some(window.insert_hitbox(hitbox_bounds, HitboxBehavior::Normal));
+
+        hitbox_bounds
     }
 
     fn paint(
@@ -95,7 +103,7 @@ impl Element for Slider {
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        _: &mut Self::PrepaintState,
+        hitbox_bounds: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -146,9 +154,10 @@ impl Element for Slider {
                     let func_copy = func.clone();
 
                     let mouse_in_1 = mouse_in.clone();
+                    let hitbox_bounds = *hitbox_bounds;
 
                     cx.on_mouse_event(move |ev: &MouseDownEvent, _, window, cx| {
-                        if !bounds.contains(&ev.position) {
+                        if !hitbox_bounds.contains(&ev.position) {
                             return;
                         }
 
