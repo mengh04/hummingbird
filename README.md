@@ -13,7 +13,8 @@ design standard.
 - SQLite-backed library
 - Theming with hot reload
 - Scrobbling (last.fm) support
-- Fuzzy-find album search (press Ctrl + F)
+- Fuzzy-find search
+- ReplayGain
 - Desktop integration
 - Playlists
 
@@ -22,8 +23,6 @@ design standard.
   - Codecs
   - Scrobble services
   - Metadata services
-- Advanced search
-- ReplayGain
 - Lyrics support
 - Improved library management
 
