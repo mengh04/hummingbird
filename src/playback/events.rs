@@ -77,6 +77,8 @@ pub enum PlaybackCommand {
     MoveItem { from: usize, to: usize },
     /// Informs the playback thread that the playback settings have changed.
     SettingsChanged(PlaybackSettings),
+    /// Informs the playback thread whether the app window is currently focused.
+    SetPositionBroadcastActive(bool),
 }
 
 /// An event from the playback thread. This is used to communicate information from the playback

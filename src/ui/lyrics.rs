@@ -23,8 +23,8 @@ const LYRICS_ACTIVE_LINE_ANIMATION_DURATION: Duration = Duration::from_millis(18
 const LYRICS_USER_INTERACTION_TIMEOUT: Duration = Duration::from_secs(2);
 const LYRICS_BASE_TEXT_SIZE: f32 = 22.0;
 const LYRICS_ACTIVE_TEXT_SIZE: f32 = 25.0;
-const LYRICS_BASE_VERTICAL_PADDING: f32 = 8.0;
-const LYRICS_ACTIVE_VERTICAL_PADDING: f32 = 10.0;
+const LYRICS_BASE_VERTICAL_PADDING: f32 = 7.0;
+const LYRICS_ACTIVE_VERTICAL_PADDING: f32 = 9.0;
 const LYRICS_BASE_LINE_HEIGHT: f32 = 1.5;
 const LYRICS_ACTIVE_LINE_HEIGHT: f32 = 1.65;
 
@@ -161,7 +161,7 @@ impl Render for Lyrics {
                 .enumerate()
                 .map(|(idx, line)| {
                     if line.text.is_empty() {
-                        div().h(px(32.0)).w_full().into_any_element()
+                        div().h(px(16.0)).w_full().into_any_element()
                     } else {
                         let emphasis = self.line_emphasis_for(idx);
                         let is_active = emphasis > 0.0 || Some(idx) == active_line;
@@ -198,6 +198,7 @@ impl Render for Lyrics {
             div()
                 .h_full()
                 .w_full()
+                .py(px(8.0))
                 .id("lyrics-scroll-container")
                 .relative()
                 .on_mouse_down(
@@ -244,7 +245,7 @@ impl Render for Lyrics {
                 .w_full()
                 .overflow_y_scroll()
                 .px(px(16.0))
-                .py(px(12.0))
+                .py(px(14.0))
                 .text_size(px(20.0))
                 .line_height(rems(1.6))
                 .font_weight(FontWeight::BOLD)

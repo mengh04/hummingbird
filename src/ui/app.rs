@@ -310,6 +310,12 @@ pub fn run() -> anyhow::Result<()> {
                     cx.set_global(CommandPaletteHolder::new(palette.clone()));
 
                     cx.new(|cx| {
+                        cx.observe_window_activation(window, |_, window, cx| {
+                            cx.global::<PlaybackInterface>()
+                                .set_position_broadcast_active(window.is_window_active());
+                        })
+                        .detach();
+
                         cx.observe_window_appearance(window, |_, _, cx| {
                             cx.refresh_windows();
                         })

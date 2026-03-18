@@ -712,7 +712,6 @@ impl RenderOnce for SidebarToggleButton {
             .w(px(25.0))
             .h(px(25.0))
             .mt(px(2.0))
-            .ml(px(3.0))
             .flex()
             .items_center()
             .justify_center()
@@ -836,6 +835,14 @@ impl Render for SecondaryControls {
                         }),
                 )
                 .child(self.replaygain_button.clone())
+                .child(
+                    div()
+                        .h(px(24.0))
+                        .w(px(1.0))
+                        .mt(px(3.0))
+                        .mx(px(4.0))
+                        .bg(theme.border_color),
+                )
                 .child(
                     sidebar_toggle_button("queue-button", MENU, queue_active).on_click(
                         move |_, _, cx| {

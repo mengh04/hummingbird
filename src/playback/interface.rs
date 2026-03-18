@@ -144,6 +144,12 @@ impl PlaybackInterface {
             .unwrap();
     }
 
+    pub fn set_position_broadcast_active(&self, active: bool) {
+        self.cmd_tx
+            .send(PlaybackCommand::SetPositionBroadcastActive(active))
+            .unwrap();
+    }
+
     pub fn get_sender(&self) -> UnboundedSender<PlaybackCommand> {
         self.cmd_tx.clone()
     }

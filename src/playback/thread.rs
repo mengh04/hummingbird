@@ -34,6 +34,11 @@ use queue_manager::{
     ReplaceResult, Reshuffled, ShuffleResult,
 };
 
+// throttle position broadcasts to prevent excees CPU utilization, especially while the application isn't
+// focused
+const ACTIVE_POSITION_BROADCAST_INTERVAL_MS: u64 = 33;
+const BACKGROUND_POSITION_BROADCAST_INTERVAL_MS: u64 = 250;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackState {
     Stopped,
@@ -62,6 +67,10 @@ pub struct PlaybackThread {
     /// The last timestamp of the current track in milliseconds. This is used to determine if the
     /// position has changed since the last update.
     last_timestamp: u64,
+    /// The last timestamp emitted to the UI and metadata broadcast services.
+    last_broadcast_timestamp: u64,
+    /// Whether position updates should be emitted at full frequency.
+    position_broadcast_active: bool,
     engine: AudioEngine,
     queue: QueueManager,
     /// The volume to apply on startup (restored from persisted settings).
@@ -95,6 +104,8 @@ impl PlaybackThread {
                     commands_rx,
                     events_tx,
                     last_timestamp: u64::MAX,
+                    last_broadcast_timestamp: u64::MAX,
+                    position_broadcast_active: true,
                     engine: AudioEngine::new(),
                     queue: queue_manager,
                     initial_volume: last_volume,
@@ -174,6 +185,9 @@ impl PlaybackThread {
                 PlaybackCommand::RemoveItem(idx) => self.remove(idx),
                 PlaybackCommand::MoveItem { from, to } => self.move_item(from, to),
                 PlaybackCommand::SettingsChanged(settings) => self.settings_changed(settings),
+                PlaybackCommand::SetPositionBroadcastActive(active) => {
+                    self.set_position_broadcast_active(active)
+                }
             }
         }
     }
@@ -246,7 +260,7 @@ impl PlaybackThread {
             info.duration_secs.unwrap_or(0),
         ));
 
-        self.update_ts();
+        self.update_ts(true);
 
         self.send_event(PlaybackEvent::StateChanged(PlaybackState::Playing));
 
@@ -607,15 +621,28 @@ impl PlaybackThread {
     }
 
     /// Emit a [`PositionChanged`] event if the timestamp has changed.
-    fn update_ts(&mut self) {
+    fn update_ts(&mut self, force: bool) {
         if let Some(timestamp) = self.engine.position_ms() {
-            if timestamp == self.last_timestamp {
+            self.last_timestamp = timestamp;
+
+            if timestamp == self.last_broadcast_timestamp {
                 return;
             }
 
-            self.send_event(PlaybackEvent::PositionChanged(timestamp));
+            if !force {
+                let min_interval = if self.position_broadcast_active {
+                    ACTIVE_POSITION_BROADCAST_INTERVAL_MS
+                } else {
+                    BACKGROUND_POSITION_BROADCAST_INTERVAL_MS
+                };
 
-            self.last_timestamp = timestamp;
+                if self.last_broadcast_timestamp.saturating_add(min_interval) > timestamp {
+                    return;
+                }
+            }
+
+            self.send_event(PlaybackEvent::PositionChanged(timestamp));
+            self.last_broadcast_timestamp = timestamp;
         }
     }
 
@@ -624,7 +651,7 @@ impl PlaybackThread {
         if let Err(e) = self.engine.seek(timestamp) {
             warn!("Failed to seek: {:?}", e);
         } else {
-            self.update_ts();
+            self.update_ts(true);
         }
     }
 
@@ -757,13 +784,18 @@ impl PlaybackThread {
         self.reapply_replaygain();
     }
 
+    fn set_position_broadcast_active(&mut self, active: bool) {
+        self.position_broadcast_active = active;
+        self.update_ts(true);
+    }
+
     /// Process audio samples through the engine and send to device.
     ///
     /// This is called in the main loop when the engine is playing.
     fn play_audio(&mut self) {
         match self.engine.process_cycle() {
             EngineCycleResult::Continue => {
-                self.update_ts();
+                self.update_ts(false);
             }
             EngineCycleResult::Eof => {
                 info!("EOF, moving to next song");
