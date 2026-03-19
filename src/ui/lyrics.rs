@@ -4,6 +4,7 @@ use lrc::{LrcLine, parse_lrc};
 
 use crate::{
     library::db::LibraryAccess,
+    playback::interface::PlaybackInterface,
     ui::{
         components::{
             icons::{MICROPHONE, icon},
@@ -160,6 +161,7 @@ impl Render for Lyrics {
                 .iter()
                 .enumerate()
                 .map(|(idx, line)| {
+                    let time_ms = line.time_ms;
                     if line.text.is_empty() {
                         div().h(px(16.0)).w_full().into_any_element()
                     } else {
@@ -167,6 +169,13 @@ impl Render for Lyrics {
                         let is_active = emphasis > 0.0 || Some(idx) == active_line;
                         let text_color = lerp_color(muted, normal, emphasis);
                         div()
+                            .id(("lyric", idx))
+                            .on_click(move |_, _, cx| {
+                                let interface = cx.global::<PlaybackInterface>();
+                                // add a small offset to make sure it goes to the next frame
+                                interface.seek(time_ms as f64 / 1000_f64 + 0.1);
+                            })
+                            .cursor_pointer()
                             .px(px(20.0))
                             .py(px(lerp(
                                 LYRICS_BASE_VERTICAL_PADDING,
