@@ -70,6 +70,7 @@
   "LANGUAGE_SYSTEM_DEFAULT": "System Default",
   "LIBRARY": "Library",
   "LIBRARY_FORCE_RESCAN": "Rescan Entire Library",
+  "LIBRARY_SCAN": "Scan",
   "LIBRARY_SHUFFLE_ALL": "Shuffle All",
   "LIKED_SONGS": "Liked Songs",
   "NEW_PLAYLIST": "New Playlist",

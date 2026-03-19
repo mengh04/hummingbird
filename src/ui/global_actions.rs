@@ -16,7 +16,7 @@ use super::models::{Models, PlaybackInfo};
 
 actions!(hummingbird, [Quit, About, Search, Settings]);
 actions!(player, [PlayPause, Next, Previous, ShuffleAll]);
-actions!(scan, [ForceScan]);
+actions!(scan, [ForceScan, Scan]);
 actions!(hummingbird, [HideSelf, HideOthers, ShowAll]);
 actions!(help, [Discord, Patreon, Issues]);
 
@@ -36,6 +36,8 @@ pub fn register_actions(cx: &mut App) {
     cx.on_action(patreon);
     cx.on_action(issues);
     cx.on_action(shuffle_all);
+    cx.on_action(scan);
+
     debug!("actions: {:?}", cx.all_action_names());
     debug!("action available: {:?}", cx.is_action_available(&Quit));
     if cfg!(target_os = "macos") {
@@ -56,6 +58,7 @@ pub fn register_actions(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("secondary-,", Settings, None)]);
 
     cx.bind_keys([KeyBinding::new("alt-shift-s", ForceScan, None)]);
+    cx.bind_keys([KeyBinding::new("shift-s", Scan, None)]);
     cx.bind_keys([KeyBinding::new("space", PlayPause, None)]);
 
     MenusBuilder::new()
@@ -98,6 +101,7 @@ pub fn register_actions(cx: &mut App) {
                     false,
                 ))
                 .add_item(menu_separator(false))
+                .add_item(menu_item(tr!("LIBRARY_SCAN", "Scan"), Scan, false))
                 .add_item(menu_item(
                     tr!("LIBRARY_FORCE_RESCAN", "Rescan Entire Library"),
                     ForceScan,
@@ -185,6 +189,11 @@ fn about(_: &About, cx: &mut App) {
 fn force_scan(_: &ForceScan, cx: &mut App) {
     let scanner = cx.global::<ScanInterface>();
     scanner.force_scan();
+}
+
+fn scan(_: &Scan, cx: &mut App) {
+    let scanner = cx.global::<ScanInterface>();
+    scanner.scan();
 }
 
 fn open_settings(_: &Settings, cx: &mut App) {
