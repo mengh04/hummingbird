@@ -13,6 +13,13 @@ pub enum ResizeEdge {
     Bottom,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum SizeMode {
+    #[default]
+    Pixels,
+    Percent,
+}
+
 const HANDLE_SIZE: Pixels = px(6.0);
 
 pub struct Resizable {
@@ -25,6 +32,7 @@ pub struct Resizable {
     max_size: Pixels,
     default_size: Pixels,
     border_width: Pixels,
+    size_mode: SizeMode,
 }
 
 impl Resizable {
@@ -39,6 +47,7 @@ impl Resizable {
             max_size: px(500.0),
             default_size: px(225.0),
             border_width: px(1.0),
+            size_mode: SizeMode::default(),
         }
     }
 
@@ -59,6 +68,11 @@ impl Resizable {
 
     pub fn border_width(mut self, width: Pixels) -> Self {
         self.border_width = width;
+        self
+    }
+
+    pub fn percent_mode(mut self) -> Self {
+        self.size_mode = SizeMode::Percent;
         self
     }
 
@@ -87,11 +101,22 @@ impl IntoElement for Resizable {
     }
 }
 
-#[derive(Default)]
 struct ResizeState {
     is_dragging: bool,
     start_position: Pixels,
     start_size: Pixels,
+    container_size: Pixels,
+}
+
+impl Default for ResizeState {
+    fn default() -> Self {
+        Self {
+            is_dragging: false,
+            start_position: Pixels::default(),
+            start_size: Pixels::default(),
+            container_size: px(1.0),
+        }
+    }
 }
 
 impl Element for Resizable {
@@ -117,10 +142,22 @@ impl Element for Resizable {
         style.refine(&self.style);
 
         let size = *self.size.read(cx);
-        if self.is_horizontal() {
-            style.size.width = size.into();
-        } else {
-            style.size.height = size.into();
+        match self.size_mode {
+            SizeMode::Pixels => {
+                if self.is_horizontal() {
+                    style.size.width = size.into();
+                } else {
+                    style.size.height = size.into();
+                }
+            }
+            SizeMode::Percent => {
+                let frac = f32::from(size);
+                if self.is_horizontal() {
+                    style.size.width = relative(frac).into();
+                } else {
+                    style.size.height = relative(frac).into();
+                }
+            }
         }
         style.flex_shrink = 0.0;
         style.display = Display::Flex;
@@ -183,6 +220,24 @@ impl Element for Resizable {
         let max_size = self.max_size;
         let default_size = self.default_size;
         let edge = self.edge;
+        let size_mode = self.size_mode;
+
+        // Precompute container_size for percent mode from actual rendered bounds and current fraction.
+        let container_size_for_paint = if size_mode == SizeMode::Percent {
+            let frac = f32::from(*self.size.read(cx));
+            let elem_size = if self.is_horizontal() {
+                bounds.size.width
+            } else {
+                bounds.size.height
+            };
+            Some(if frac > 0.0 {
+                px(f32::from(elem_size) / frac)
+            } else {
+                px(1.0)
+            })
+        } else {
+            None
+        };
 
         window.with_optional_element_state(
             id,
@@ -190,6 +245,10 @@ impl Element for Resizable {
                 let state = state
                     .flatten()
                     .unwrap_or_else(|| Rc::new(RefCell::new(ResizeState::default())));
+
+                if let Some(cs) = container_size_for_paint {
+                    state.borrow_mut().container_size = cs;
+                }
 
                 let is_dragging = state.borrow().is_dragging;
                 let line_width = if is_dragging {
@@ -244,10 +303,31 @@ impl Element for Resizable {
                         return;
                     }
 
-                    let delta = axis_position(edge, ev.position) - drag_state.start_position;
-                    let new_size = match edge {
-                        ResizeEdge::Left | ResizeEdge::Top => drag_state.start_size - delta,
-                        ResizeEdge::Right | ResizeEdge::Bottom => drag_state.start_size + delta,
+                    let new_size = match size_mode {
+                        SizeMode::Pixels => {
+                            let delta =
+                                axis_position(edge, ev.position) - drag_state.start_position;
+                            match edge {
+                                ResizeEdge::Left | ResizeEdge::Top => drag_state.start_size - delta,
+                                ResizeEdge::Right | ResizeEdge::Bottom => {
+                                    drag_state.start_size + delta
+                                }
+                            }
+                        }
+                        SizeMode::Percent => {
+                            let delta_px =
+                                axis_position(edge, ev.position) - drag_state.start_position;
+                            let container = f32::from(drag_state.container_size);
+                            let delta_frac = px(f32::from(delta_px) / container);
+                            match edge {
+                                ResizeEdge::Left | ResizeEdge::Top => {
+                                    drag_state.start_size - delta_frac
+                                }
+                                ResizeEdge::Right | ResizeEdge::Bottom => {
+                                    drag_state.start_size + delta_frac
+                                }
+                            }
+                        }
                     };
                     let clamped_size = new_size.clamp(min_size, max_size);
 
@@ -316,7 +396,7 @@ fn handle_bounds(bounds: Bounds<Pixels>, edge: ResizeEdge, handle_size: Pixels) 
             },
             size: Size {
                 width: bounds.size.width,
-                height: handle_size,
+                height: bounds.size.height - handle_size,
             },
         },
     }

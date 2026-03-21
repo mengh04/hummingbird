@@ -16,7 +16,7 @@ struct ScrollStateStorage {
 }
 
 use crate::{
-    settings::storage::DEFAULT_SPLIT_WIDTH,
+    settings::storage::DEFAULT_SPLIT_FRACTION,
     ui::{
         command_palette::{Command, CommandManager},
         components::{
@@ -209,8 +209,6 @@ pub struct Library {
     focus_handle: FocusHandle,
     scroll_state: ScrollStateStorage,
     reclaim_focus: bool,
-    effective_split_width: Entity<Pixels>,
-    last_rendered_split: Pixels,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -403,6 +401,9 @@ impl Library {
             )
             .detach();
 
+            let split_width = cx.global::<Models>().split_width.clone();
+            cx.observe(&split_width, |_, _, cx| cx.notify()).detach();
+
             let focus_handle = cx.focus_handle();
 
             cx.register_command(
@@ -425,11 +426,6 @@ impl Library {
             let settings = cx.global::<crate::settings::SettingsGlobal>().model.clone();
             cx.observe(&settings, |_, _, cx| cx.notify()).detach();
 
-            let initial_split = *cx.global::<Models>().split_width.read(cx);
-            let effective_split_width: Entity<Pixels> = cx.new(|_| initial_split);
-            cx.observe(&effective_split_width, |_, _, cx| cx.notify())
-                .detach();
-
             Library {
                 navigation_view: NavigationView::new(cx, switcher_model.clone()),
                 sidebar: Sidebar::new(cx, switcher_model.clone()),
@@ -441,8 +437,6 @@ impl Library {
                 focus_handle,
                 scroll_state,
                 reclaim_focus: false,
-                effective_split_width,
-                last_rendered_split: initial_split,
             }
         })
     }
@@ -476,40 +470,8 @@ impl Render for Library {
         let content = if two_column && self.left_view.is_some() && self.right_view.is_some() {
             // two column
             let split_width_model = cx.global::<Models>().split_width.clone();
-            let mut desired_split = *split_width_model.read(cx);
             let left = self.left_view.as_ref().unwrap();
             let right = self.right_view.as_ref().unwrap();
-
-            // handle drag changes
-            let current_effective = *self.effective_split_width.read(cx);
-            if current_effective != self.last_rendered_split {
-                desired_split = current_effective;
-                split_width_model.update(cx, |w, cx| {
-                    *w = desired_split;
-                    cx.notify();
-                });
-            }
-
-            // get the minimum availible width for the content area
-            // doesn't handle queue/sidebar oollapses but this is fine
-            let viewport_width = window.viewport_size().width;
-            let models = cx.global::<Models>();
-            let sidebar_width = *models.sidebar_width.read(cx);
-            let queue_width = *models.queue_width.read(cx);
-            let available_width = viewport_width - sidebar_width - queue_width;
-
-            let min_right_pane_width = px(200.0);
-            let dynamic_max = (available_width - min_right_pane_width).max(px(250.0));
-
-            let effective = desired_split.min(dynamic_max);
-            let effective_entity = self.effective_split_width.clone();
-            self.last_rendered_split = effective;
-            if *effective_entity.read(cx) != effective {
-                effective_entity.update(cx, |w, cx| {
-                    *w = effective;
-                    cx.notify();
-                });
-            }
 
             div()
                 .w_full()
@@ -519,11 +481,12 @@ impl Render for Library {
                 .mr_auto()
                 .overflow_hidden()
                 .child(
-                    resizable("split-resizable", effective_entity, ResizeEdge::Right)
+                    resizable("split-resizable", split_width_model, ResizeEdge::Right)
+                        .percent_mode()
                         .border_width(px(2.0))
-                        .min_size(px(250.0))
-                        .max_size(dynamic_max)
-                        .default_size(DEFAULT_SPLIT_WIDTH)
+                        .min_size(px(0.10))
+                        .max_size(px(0.80))
+                        .default_size(DEFAULT_SPLIT_FRACTION)
                         .h_full()
                         .child(
                             div()

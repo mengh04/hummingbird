@@ -30,8 +30,8 @@ use crate::{
         SettingsGlobal,
         interface::StartupLibraryView,
         storage::{
-            DEFAULT_LYRICS_HEIGHT, DEFAULT_QUEUE_WIDTH, DEFAULT_SIDEBAR_WIDTH, DEFAULT_SPLIT_WIDTH,
-            StorageData, TableSettings,
+            DEFAULT_LYRICS_FRACTION, DEFAULT_QUEUE_WIDTH, DEFAULT_SIDEBAR_WIDTH,
+            DEFAULT_SPLIT_FRACTION, StorageData, TableSettings,
         },
     },
     ui::{app::get_dirs, data::Decode, library::ViewSwitchMessage},
@@ -297,10 +297,10 @@ pub fn build_models(cx: &mut App, queue: Queue, storage_data: &StorageData) {
         }
     });
     let split_width: Entity<Pixels> = cx.new(|_| {
-        if storage_data.split_width > 0.0 {
-            storage_data.split_width()
+        if storage_data.split_fraction > 0.0 {
+            storage_data.split_fraction()
         } else {
-            DEFAULT_SPLIT_WIDTH
+            DEFAULT_SPLIT_FRACTION
         }
     });
 
@@ -308,10 +308,10 @@ pub fn build_models(cx: &mut App, queue: Queue, storage_data: &StorageData) {
     let liked_tracks_sort_method = cx.new(|_| storage_data.liked_tracks_sort_method);
     let sidebar_collapsed: Entity<bool> = cx.new(|_| storage_data.sidebar_collapsed);
     let lyrics_height: Entity<Pixels> = cx.new(|_| {
-        if storage_data.lyrics_height > 0.0 {
-            storage_data.lyrics_height()
+        if storage_data.lyrics_fraction > 0.0 {
+            storage_data.lyrics_fraction()
         } else {
-            DEFAULT_LYRICS_HEIGHT
+            DEFAULT_LYRICS_FRACTION
         }
     });
 

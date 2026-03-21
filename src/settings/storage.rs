@@ -7,8 +7,8 @@ use crate::{library::db::LikedTrackSortMethod, ui::models::CurrentTrack};
 
 pub const DEFAULT_SIDEBAR_WIDTH: Pixels = px(225.0);
 pub const DEFAULT_QUEUE_WIDTH: Pixels = px(275.0);
-pub const DEFAULT_SPLIT_WIDTH: Pixels = px(400.0);
-pub const DEFAULT_LYRICS_HEIGHT: Pixels = px(200.0);
+pub const DEFAULT_SPLIT_FRACTION: Pixels = px(0.50);
+pub const DEFAULT_LYRICS_FRACTION: Pixels = px(0.35);
 
 fn default_sidebar_width() -> f32 {
     f32::from(DEFAULT_SIDEBAR_WIDTH)
@@ -18,8 +18,8 @@ fn default_queue_width() -> f32 {
     f32::from(DEFAULT_QUEUE_WIDTH)
 }
 
-fn default_split_width() -> f32 {
-    f32::from(DEFAULT_SPLIT_WIDTH)
+fn default_split_fraction() -> f32 {
+    f32::from(DEFAULT_SPLIT_FRACTION)
 }
 
 fn default_volume() -> f64 {
@@ -38,8 +38,8 @@ fn default_liked_tracks_sort_method() -> LikedTrackSortMethod {
     LikedTrackSortMethod::ReleaseOrder
 }
 
-fn default_lyrics_height() -> f32 {
-    f32::from(DEFAULT_LYRICS_HEIGHT)
+fn default_lyrics_fraction() -> f32 {
+    f32::from(DEFAULT_LYRICS_FRACTION)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -72,18 +72,18 @@ pub struct StorageData {
     /// Width of the queue panel in pixels
     #[serde(default = "default_queue_width")]
     pub queue_width: f32,
-    /// Width of the two-column split pane in pixels
-    #[serde(default = "default_split_width")]
-    pub split_width: f32,
+    /// Fraction (0..1) of the two-column split pane width
+    #[serde(default = "default_split_fraction")]
+    pub split_fraction: f32,
     #[serde(default = "default_table_settings")]
     pub table_settings: HashMap<String, TableSettings>,
     #[serde(default = "default_liked_tracks_sort_method")]
     pub liked_tracks_sort_method: LikedTrackSortMethod,
     #[serde(default)]
     pub sidebar_collapsed: bool,
-    /// Height of the lyrics panel in pixels
-    #[serde(default = "default_lyrics_height")]
-    pub lyrics_height: f32,
+    /// Fraction (0..1) of the lyrics panel height
+    #[serde(default = "default_lyrics_fraction")]
+    pub lyrics_fraction: f32,
 }
 
 impl StorageData {
@@ -95,12 +95,12 @@ impl StorageData {
         px(self.queue_width)
     }
 
-    pub fn split_width(&self) -> Pixels {
-        px(self.split_width)
+    pub fn split_fraction(&self) -> Pixels {
+        px(self.split_fraction)
     }
 
-    pub fn lyrics_height(&self) -> Pixels {
-        px(self.lyrics_height)
+    pub fn lyrics_fraction(&self) -> Pixels {
+        px(self.lyrics_fraction)
     }
 }
 
@@ -111,11 +111,11 @@ impl Default for StorageData {
             volume: default_volume(),
             sidebar_width: f32::from(DEFAULT_SIDEBAR_WIDTH),
             queue_width: f32::from(DEFAULT_QUEUE_WIDTH),
-            split_width: f32::from(DEFAULT_SPLIT_WIDTH),
+            split_fraction: f32::from(DEFAULT_SPLIT_FRACTION),
             table_settings: HashMap::new(),
             liked_tracks_sort_method: default_liked_tracks_sort_method(),
             sidebar_collapsed: false,
-            lyrics_height: f32::from(DEFAULT_LYRICS_HEIGHT),
+            lyrics_fraction: f32::from(DEFAULT_LYRICS_FRACTION),
         }
     }
 }

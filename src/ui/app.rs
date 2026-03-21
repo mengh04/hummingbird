@@ -339,8 +339,8 @@ pub fn run() -> anyhow::Result<()> {
                                 let volume = *volume.read(cx);
                                 let sidebar_width: f32 = (*sidebar_width.read(cx)).into();
                                 let queue_width: f32 = (*queue_width.read(cx)).into();
-                                let split_width: f32 = (*split_width.read(cx)).into();
-                                let lyrics_height: f32 = (*lyrics_height.read(cx)).into();
+                                let split_fraction: f32 = (*split_width.read(cx)).into();
+                                let lyrics_fraction: f32 = (*lyrics_height.read(cx)).into();
                                 let table_settings = table_settings.read(cx).clone();
                                 let liked_tracks_sort_method = *liked_tracks_sort_method.read(cx);
                                 let sidebar_collapsed = *sidebar_collapsed.read(cx);
@@ -351,8 +351,8 @@ pub fn run() -> anyhow::Result<()> {
                                         volume,
                                         sidebar_width,
                                         queue_width,
-                                        split_width,
-                                        lyrics_height,
+                                        split_fraction,
+                                        lyrics_fraction,
                                         table_settings,
                                         liked_tracks_sort_method,
                                         sidebar_collapsed,

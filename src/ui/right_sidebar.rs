@@ -2,7 +2,7 @@ use gpui::*;
 use prelude::FluentBuilder;
 
 use crate::{
-    settings::storage::{DEFAULT_LYRICS_HEIGHT, DEFAULT_QUEUE_WIDTH},
+    settings::storage::{DEFAULT_LYRICS_FRACTION, DEFAULT_QUEUE_WIDTH},
     ui::{
         components::resizable::{ResizeEdge, resizable},
         lyrics::Lyrics,
@@ -10,9 +10,6 @@ use crate::{
         queue::Queue,
     },
 };
-
-const LYRICS_MIN_HEIGHT: Pixels = px(80.0);
-const LYRICS_MAX_HEIGHT: Pixels = px(600.0);
 
 // ─── RightSidebar component ───────────────────────────────────────────────────
 
@@ -85,9 +82,10 @@ impl Render for RightSidebar {
                                         lyrics_height_entity.clone(),
                                         ResizeEdge::Top,
                                     )
-                                    .min_size(LYRICS_MIN_HEIGHT)
-                                    .max_size(LYRICS_MAX_HEIGHT)
-                                    .default_size(DEFAULT_LYRICS_HEIGHT)
+                                    .percent_mode()
+                                    .min_size(px(0.10))
+                                    .max_size(px(0.85))
+                                    .default_size(DEFAULT_LYRICS_FRACTION)
                                     .flex_shrink_0()
                                     .w_full()
                                     .child(div().h_full().overflow_hidden().child(lyrics.clone())),
