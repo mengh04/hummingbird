@@ -29,6 +29,7 @@ pub trait PaletteItem {
     fn category(&self) -> Option<I18nString> {
         None
     }
+    fn on_middle_click(&self, _cx: &mut App) {}
 }
 
 #[derive(Clone)]
@@ -844,21 +845,31 @@ where
                     .border_color(theme.palette_item_border_hover)
             })
             .rounded(px(6.0))
-            .on_click(cx.listener(move |_, _, _, cx| {
-                if !is_enabled {
-                    return;
-                }
+            .on_click(cx.listener({
+                let item_data = item_data.clone();
+                move |_, _, _, cx| {
+                    if !is_enabled {
+                        return;
+                    }
 
-                if let Some(override_fn) = on_accept_override.clone() {
-                    override_fn(cx);
-                } else if let Some(parent) = weak_parent.upgrade()
-                    && let Some(item) = item_data.clone()
-                {
-                    parent.update(cx, |finder, cx| {
-                        (finder.on_accept)(&item, cx);
-                    });
+                    if let Some(override_fn) = on_accept_override.clone() {
+                        override_fn(cx);
+                    } else if let Some(parent) = weak_parent.upgrade()
+                        && let Some(item) = item_data.clone()
+                    {
+                        parent.update(cx, |finder, cx| {
+                            (finder.on_accept)(&item, cx);
+                        });
+                    }
                 }
             }))
+            .on_aux_click(move |ev, _, cx| {
+                if ev.is_middle_click()
+                    && let Some(item) = item_data.clone()
+                {
+                    item.on_middle_click(cx);
+                }
+            })
             .when_some(self.left.clone(), |div_outer, left| {
                 div_outer.child(match left {
                     FinderItemLeft::Text(text) => div()

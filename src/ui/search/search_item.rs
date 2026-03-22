@@ -3,9 +3,15 @@ use std::sync::Arc;
 use cntp_i18n::{I18nString, tr};
 use gpui::{App, SharedString};
 
-use crate::ui::components::{
-    icons::{DISC, USERS},
-    palette::{FinderItemLeft, PaletteItem},
+use crate::{
+    library::db::{AlbumMethod, LibraryAccess},
+    ui::{
+        components::{
+            icons::{DISC, USERS},
+            palette::{FinderItemLeft, PaletteItem},
+        },
+        library::context_menus::{play_album_next, play_track_next},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,5 +110,25 @@ impl PaletteItem for SearchPaletteItem {
             SearchPaletteItem::Album { .. } => tr!("ALBUMS"),
             SearchPaletteItem::Track { .. } => tr!("TRACKS"),
         })
+    }
+
+    fn on_middle_click(&self, cx: &mut App) {
+        match self {
+            SearchPaletteItem::Album { id, .. } => {
+                let album = cx.get_album_by_id(*id as i64, AlbumMethod::Metadata);
+
+                if let Ok(album) = album {
+                    play_album_next(cx, &album);
+                }
+            }
+            SearchPaletteItem::Track { id, .. } => {
+                let track = cx.get_track_by_id(*id as i64);
+
+                if let Ok(track) = track {
+                    play_track_next(cx, &track);
+                }
+            }
+            _ => (),
+        }
     }
 }

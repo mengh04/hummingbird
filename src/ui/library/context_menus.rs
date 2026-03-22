@@ -318,7 +318,7 @@ fn play_album_now(cx: &mut App, album: &Album) {
     replace_queue(queue_items, cx);
 }
 
-fn play_album_next(cx: &mut App, album: &Album) {
+pub fn play_album_next(cx: &mut App, album: &Album) {
     let queue_position = cx.global::<Models>().queue.read(cx).position + 1;
     for (offset, item) in available_album_queue_items(cx, album)
         .into_iter()
