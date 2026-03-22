@@ -470,6 +470,18 @@ pub async fn delete_playlist(pool: &SqlitePool, playlist_id: i64) -> sqlx::Resul
     Ok(())
 }
 
+pub async fn rename_playlist(pool: &SqlitePool, playlist_id: i64, name: &str) -> sqlx::Result<()> {
+    let query = include_str!("../../queries/playlist/rename_playlist.sql");
+
+    sqlx::query(query)
+        .bind(name)
+        .bind(playlist_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
 pub async fn get_all_playlists(pool: &SqlitePool) -> sqlx::Result<Arc<Vec<PlaylistWithCount>>> {
     let query = include_str!("../../queries/playlist/get_all_playlists.sql");
 
@@ -644,6 +656,7 @@ pub trait LibraryAccess {
     fn list_artists_search(&self) -> sqlx::Result<Vec<(i64, String)>>;
     fn create_playlist(&self, name: &str) -> sqlx::Result<i64>;
     fn delete_playlist(&self, playlist_id: i64) -> sqlx::Result<()>;
+    fn rename_playlist(&self, playlist_id: i64, name: &str) -> sqlx::Result<()>;
     fn get_all_playlists(&self) -> sqlx::Result<Arc<Vec<PlaylistWithCount>>>;
     fn get_playlist(&self, playlist_id: i64) -> sqlx::Result<Arc<Playlist>>;
     fn get_playlist_track_files(&self, playlist_id: i64) -> sqlx::Result<Arc<Vec<String>>>;
@@ -735,6 +748,11 @@ impl LibraryAccess for App {
     fn delete_playlist(&self, playlist_id: i64) -> sqlx::Result<()> {
         let pool: &Pool = self.global();
         crate::RUNTIME.block_on(delete_playlist(&pool.0, playlist_id))
+    }
+
+    fn rename_playlist(&self, playlist_id: i64, name: &str) -> sqlx::Result<()> {
+        let pool: &Pool = self.global();
+        crate::RUNTIME.block_on(rename_playlist(&pool.0, playlist_id, name))
     }
 
     fn get_all_playlists(&self) -> sqlx::Result<Arc<Vec<PlaylistWithCount>>> {

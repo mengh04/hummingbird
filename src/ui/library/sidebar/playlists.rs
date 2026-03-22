@@ -18,7 +18,7 @@ use crate::{
         components::{
             button::{ButtonIntent, button},
             context::context,
-            icons::{CROSS, PLAYLIST, PLUS, STAR},
+            icons::{CROSS, PENCIL, PLAYLIST, PLUS, STAR},
             menu::{menu, menu_item},
             popover::{PopoverPosition, popover},
             scrollbar::{RightPad, floating_scrollbar},
@@ -37,6 +37,8 @@ pub struct PlaylistList {
     scroll_handle: ScrollHandle,
     popover_open: bool,
     new_playlist_input: Entity<Textbox>,
+    rename_popover_playlist: Option<i64>,
+    rename_playlist_input: Entity<Textbox>,
 }
 
 impl PlaylistList {
@@ -73,12 +75,22 @@ impl PlaylistList {
                     }
                 });
 
+            let weak_self_rename = cx.entity().downgrade();
+            let rename_playlist_input =
+                Textbox::new_with_submit(cx, StyleRefinement::default(), move |cx| {
+                    if let Some(entity) = weak_self_rename.upgrade() {
+                        entity.update(cx, |this, cx| this.handle_rename_submit(cx));
+                    }
+                });
+
             Self {
                 playlists: playlists.clone(),
                 nav_model,
                 scroll_handle: ScrollHandle::new(),
                 popover_open: false,
                 new_playlist_input,
+                rename_popover_playlist: None,
+                rename_playlist_input,
             }
         })
     }
@@ -103,6 +115,33 @@ impl PlaylistList {
 
     fn close_popover(&mut self, cx: &mut Context<Self>) {
         self.popover_open = false;
+        cx.notify();
+    }
+
+    fn handle_rename_submit(&mut self, cx: &mut Context<Self>) {
+        let name = self.rename_playlist_input.read(cx).value(cx);
+        if name.is_empty() {
+            return;
+        }
+
+        if let Some(pl_id) = self.rename_popover_playlist {
+            if let Err(err) = cx.rename_playlist(pl_id, &name) {
+                error!("Failed to rename playlist: {}", err);
+            } else {
+                let playlist_tracker = cx.global::<Models>().playlist_tracker.clone();
+                playlist_tracker.update(cx, |_, cx| {
+                    cx.emit(PlaylistEvent::PlaylistUpdated(pl_id));
+                });
+            }
+        }
+
+        self.rename_popover_playlist = None;
+        self.rename_playlist_input.update(cx, |tb, cx| tb.reset(cx));
+        cx.notify();
+    }
+
+    fn close_rename_popover(&mut self, cx: &mut Context<Self>) {
+        self.rename_popover_playlist = None;
         cx.notify();
     }
 }
@@ -137,6 +176,9 @@ impl Render for PlaylistList {
         } else {
             current_view
         };
+
+        let rename_input = self.rename_playlist_input.clone();
+        let weak_entity = cx.entity().downgrade();
 
         for playlist in &*self.playlists {
             let pl_id = playlist.id;
@@ -198,40 +240,116 @@ impl Render for PlaylistList {
                 );
 
             if playlist.playlist_type != PlaylistType::System {
+                let rename_open = self.rename_popover_playlist == Some(pl_id);
+                let weak_self = weak_entity.clone();
+                let weak_self2 = weak_entity.clone();
+
                 main = main.child(
-                    context(("playlist", pl_id as usize)).with(item).child(
-                        div()
-                            .bg(theme.elevated_background)
-                            .child(menu().item(menu_item(
-                                "delete_playlist",
-                                Some(CROSS),
-                                tr!("DELETE_PLAYLIST", "Delete playlist"),
-                                move |_, _, cx| {
-                                    if let Err(err) = cx.delete_playlist(pl_id) {
-                                        error!("Failed to delete playlist: {}", err);
-                                    }
+                    div()
+                        .relative()
+                        .child(
+                            context(("playlist", pl_id as usize)).with(item).child(
+                                div().bg(theme.elevated_background).child(
+                                    menu()
+                                        .item(menu_item(
+                                            "rename_playlist",
+                                            Some(PENCIL),
+                                            tr!("RENAME_PLAYLIST", "Rename playlist"),
+                                            move |_, window, cx| {
+                                                if let Some(entity) = weak_self.upgrade() {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.rename_popover_playlist = Some(pl_id);
+                                                        this.rename_playlist_input
+                                                            .read(cx)
+                                                            .focus_handle()
+                                                            .focus(window, cx);
+                                                        cx.notify();
+                                                    });
+                                                }
+                                            },
+                                        ))
+                                        .item(menu_item(
+                                            "delete_playlist",
+                                            Some(CROSS),
+                                            tr!("DELETE_PLAYLIST", "Delete playlist"),
+                                            move |_, _, cx| {
+                                                if let Err(err) = cx.delete_playlist(pl_id) {
+                                                    error!("Failed to delete playlist: {}", err);
+                                                }
 
-                                    let playlist_tracker =
-                                        cx.global::<Models>().playlist_tracker.clone();
+                                                let playlist_tracker =
+                                                    cx.global::<Models>().playlist_tracker.clone();
 
-                                    playlist_tracker.update(cx, |_, cx| {
-                                        cx.emit(PlaylistEvent::PlaylistDeleted(pl_id))
-                                    });
+                                                playlist_tracker.update(cx, |_, cx| {
+                                                    cx.emit(PlaylistEvent::PlaylistDeleted(pl_id))
+                                                });
 
-                                    let switcher_model =
-                                        cx.global::<Models>().switcher_model.clone();
+                                                let switcher_model =
+                                                    cx.global::<Models>().switcher_model.clone();
 
-                                    switcher_model.update(cx, |history, cx| {
-                                        history
-                                            .retain(|v| *v != ViewSwitchMessage::Playlist(pl_id));
+                                                switcher_model.update(cx, |history, cx| {
+                                                    history.retain(|v| {
+                                                        *v != ViewSwitchMessage::Playlist(pl_id)
+                                                    });
 
-                                        cx.emit(ViewSwitchMessage::Refresh);
+                                                    cx.emit(ViewSwitchMessage::Refresh);
 
-                                        cx.notify();
+                                                    cx.notify();
+                                                })
+                                            },
+                                        )),
+                                ),
+                            ),
+                        )
+                        .when(rename_open, |this| {
+                            this.child(
+                                popover()
+                                    .position(PopoverPosition::RightTop)
+                                    .edge_offset(px(12.0))
+                                    .on_dismiss(move |_, cx| {
+                                        if let Some(entity) = weak_self2.upgrade() {
+                                            entity.update(cx, |this, cx| {
+                                                this.close_rename_popover(cx)
+                                            });
+                                        }
                                     })
-                                },
-                            ))),
-                    ),
+                                    .min_w(px(250.0))
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(6.0))
+                                    .on_any_mouse_down(|_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.close_rename_popover(cx);
+                                    }))
+                                    .child(rename_input.clone())
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .justify_end()
+                                            .gap(px(6.0))
+                                            .child(
+                                                button()
+                                                    .id(("cancel-rename", pl_id as u64))
+                                                    .child(tr!("CANCEL"))
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.close_rename_popover(cx);
+                                                    })),
+                                            )
+                                            .child(
+                                                button()
+                                                    .id(("rename-playlist", pl_id as u64))
+                                                    .intent(ButtonIntent::Primary)
+                                                    .child(tr!("RENAME", "Rename"))
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.handle_rename_submit(cx);
+                                                    })),
+                                            ),
+                                    ),
+                            )
+                        }),
                 );
             } else {
                 main = main.child(item);
