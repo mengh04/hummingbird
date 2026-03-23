@@ -755,9 +755,7 @@ impl PlaybackThread {
                 self.send_event(PlaybackEvent::ShuffleToggled(false, new_position));
                 self.send_event(PlaybackEvent::QueueUpdated);
 
-                if new_position != 0 {
-                    self.send_event(PlaybackEvent::QueuePositionChanged(new_position));
-                }
+                self.send_event(PlaybackEvent::QueuePositionChanged(new_position));
             }
         }
     }
