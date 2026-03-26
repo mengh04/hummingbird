@@ -28,7 +28,9 @@ jobs:
       - name: Update Inno Setup
         run: choco upgrade innosetup -y
       - name: Install minisign
-        run: winget install minisign --accept-package-agreements --accept-source-agreements --disable-interactivity
+        run: |
+          winget install minisign --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
       - name: Update rust
         run: rustup update
       - name: Set ENV
