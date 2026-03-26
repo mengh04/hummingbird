@@ -27,6 +27,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Update rust
         run: rustup update
+      - name: Install minisign
+        run: brew install minisign
       - name: Set ENV
         run: echo "TARGET_TRIPLE=$(rustc -vV | grep 'host:' | cut -d' ' -f2)" >> $GITHUB_ENV
       - name: Install cntp build tools
@@ -99,19 +101,34 @@ jobs:
       - name: Make Zip
         run: |
           zip -r hummingbird-$ARCH.zip target/bundle/${{ env.TARGET_TRIPLE }}/release/Hummingbird.app
+      - name: Prepare minisign key
+        env:
+          MINISIGN_PRIV_KEY: ${{ secrets.MINISIGN_PRIV_KEY }}
+        run: |
+          printf '%s' "$MINISIGN_PRIV_KEY" > minisign.key
+      - name: Sign DMG
+        run: minisign -S -s minisign.key -m "hummingbird-$ARCH.dmg"
+      - name: Sign Zip
+        run: minisign -S -s minisign.key -m "hummingbird-$ARCH.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: hummingbird-${{ env.ARCH }}.zip
-          path: hummingbird-${{ env.ARCH }}.zip
+          path: |
+            hummingbird-${{ env.ARCH }}.zip
+            hummingbird-${{ env.ARCH }}.zip.minisig
       - uses: actions/upload-artifact@v4
         with:
           name: hummingbird-${{ env.ARCH }}.dmg
-          path: hummingbird-${{ env.ARCH }}.dmg
+          path: |
+            hummingbird-${{ env.ARCH }}.dmg
+            hummingbird-${{ env.ARCH }}.dmg.minisig
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             hummingbird-${{ env.ARCH }}.zip
+            hummingbird-${{ env.ARCH }}.zip.minisig
             hummingbird-${{ env.ARCH }}.dmg
+            hummingbird-${{ env.ARCH }}.dmg.minisig
           prerelease: true
           name: latest
           tag_name: latest
