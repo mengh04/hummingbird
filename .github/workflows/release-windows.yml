@@ -28,7 +28,7 @@ jobs:
       - name: Update Inno Setup
         run: choco upgrade innosetup -y
       - name: Install minisign
-        run: choco install minisign -y
+        run: winget install minisign --accept-package-agreements --accept-source-agreements --disable-interactivity
       - name: Update rust
         run: rustup update
       - name: Set ENV
