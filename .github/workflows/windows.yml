@@ -33,7 +33,7 @@ jobs:
           Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
           scoop install minisign
       - name: Try minisign
-        run: ~\scoop\apps\minisign\minisign.exe -v
+        run: \& "$env:USERPROFILE\scoop\shims\minisign.exe" -v
       - name: Update rust
         run: rustup update
       - name: Set ENV
@@ -64,10 +64,10 @@ jobs:
           Set-Content -Path minisign.key -Value $env:MINISIGN_PRIV_KEY -NoNewline
       - name: Sign portable binary
         shell: pwsh
-        run: ~\scoop\apps\minisign\minisign.exe -S -s minisign.key -m target/bundle/${{ env.TARGET_TRIPLE }}/release/Hummingbird-${{ env.ARCH }}.exe
+        run: \& "$env:USERPROFILE\scoop\shims\minisign.exe" -S -s minisign.key -m target/bundle/${{ env.TARGET_TRIPLE }}/release/Hummingbird-${{ env.ARCH }}.exe
       - name: Sign installer
         shell: pwsh
-        run: ~\scoop\apps\minisign\minisign.exe -S -s minisign.key -m package/inno/Output/HummingbirdSetup_${{ env.ARCH }}.exe
+        run: \& "$env:USERPROFILE\scoop\shims\minisign.exe" -S -s minisign.key -m package/inno/Output/HummingbirdSetup_${{ env.ARCH }}.exe
       - uses: actions/upload-artifact@v4
         with:
           name: hummingbird-${{ env.ARCH }}.exe
