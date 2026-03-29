@@ -84,7 +84,7 @@ pub async fn write_checkpoint(
         let guard = checkpoint.lock().await;
         let view = ScanRecordForWrite {
             version: SCAN_VERSION,
-            records: &*guard,
+            records: &guard,
             directories: &directories,
         };
         postcard::to_allocvec(&view)

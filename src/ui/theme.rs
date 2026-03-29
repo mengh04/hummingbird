@@ -258,7 +258,6 @@ impl Default for Theme {
 
 impl Global for Theme {}
 
-pub const DEFAULT_THEME_ID: &str = "";
 pub const LEGACY_THEME_PATH: &str = "theme.json";
 pub const THEMES_DIR_NAME: &str = "themes";
 

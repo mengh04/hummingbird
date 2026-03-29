@@ -279,11 +279,14 @@ impl<T: Clone + PartialEq + 'static> RenderOnce for Dropdown<T> {
                         .on_click({
                             let highlighted = highlighted_index.clone();
                             let on_change = self.on_change.clone();
+                            let is_open = is_open.clone();
+
                             move |_, window, cx| {
                                 highlighted.write(cx, Some(idx));
                                 if let Some(on_change) = &on_change {
                                     (on_change)(option.0.clone(), window, cx);
                                 }
+                                is_open.write(cx, false);
                             }
                         })
                 }));

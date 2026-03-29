@@ -16,15 +16,10 @@ use crate::{
         save_settings,
     },
     ui::components::{
-        checkbox::checkbox,
-        dropdown::dropdown,
-        label::label,
-        labeled_slider::labeled_slider,
+        checkbox::checkbox, dropdown::dropdown, label::label, labeled_slider::labeled_slider,
         section_header::section_header,
     },
-    ui::theme::{
-        Theme, ThemeOption, ThemeOptionsGlobal, resolve_theme_relative_path,
-    },
+    ui::theme::{Theme, ThemeOption, ThemeOptionsGlobal, resolve_theme_relative_path},
 };
 
 #[derive(Clone)]

@@ -14,23 +14,6 @@ pub enum StartupLibraryView {
     LikedSongs,
 }
 
-impl StartupLibraryView {
-    pub const ALL: [Self; 4] = [Self::Albums, Self::Artists, Self::Tracks, Self::LikedSongs];
-
-    pub fn index(self) -> usize {
-        match self {
-            Self::Albums => 0,
-            Self::Artists => 1,
-            Self::Tracks => 2,
-            Self::LikedSongs => 3,
-        }
-    }
-
-    pub fn from_index(index: usize) -> Self {
-        Self::ALL.get(index).copied().unwrap_or_default()
-    }
-}
-
 fn default_grid_min_item_width() -> f32 {
     DEFAULT_GRID_MIN_ITEM_WIDTH
 }
