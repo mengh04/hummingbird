@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
-use cntp_i18n::tr;
+use chrono::{DateTime, NaiveDate, Utc};
+use cntp_i18n::{Date, I18N_MANAGER, StringModifier, tr};
 use gpui::{App, SharedString};
 use indexmap::IndexMap;
 use rustc_hash::FxBuildHasher;
 
-use super::{Album, ArtistWithCounts, Track};
+use super::{
+    Album, ArtistWithCounts, DATE_PRECISION_FULL_DATE, DATE_PRECISION_YEAR,
+    DATE_PRECISION_YEAR_MONTH, DBString, Track,
+};
 use crate::{
     library::db::{AlbumMethod, AlbumSortMethod, ArtistSortMethod, LibraryAccess, TrackSortMethod},
     ui::{
@@ -22,6 +26,44 @@ use crate::{
         },
     },
 };
+
+fn parse_album_release_date(release_date: &DBString) -> Option<DateTime<Utc>> {
+    let date = NaiveDate::parse_from_str(release_date.0.as_ref(), "%Y-%m-%d").ok()?;
+    Some(DateTime::from_naive_utc_and_offset(
+        date.and_hms_opt(0, 0, 0)?,
+        Utc,
+    ))
+}
+
+fn album_release_date_format(precision: i32) -> Option<(&'static str, &'static str)> {
+    match precision {
+        DATE_PRECISION_YEAR => Some(("Y", "medium")),
+        DATE_PRECISION_YEAR_MONTH => Some(("YM", "medium")),
+        DATE_PRECISION_FULL_DATE => Some(("YMD", "medium")),
+        _ => None,
+    }
+}
+
+fn format_album_release_date_with(
+    release_date: Option<&DBString>,
+    format: &'static str,
+    length: &'static str,
+) -> Option<SharedString> {
+    let release_date = parse_album_release_date(release_date?)?;
+    let format_var = (None, format);
+    let length_var = (Some("length"), length);
+    let variables = [&format_var, &length_var];
+    let locale = &I18N_MANAGER.read().unwrap().locale;
+    Some(Date.transform(locale, &release_date, &variables).into())
+}
+
+fn format_album_release_date(
+    release_date: Option<&DBString>,
+    date_precision: Option<i32>,
+) -> Option<SharedString> {
+    let (format, length) = album_release_date_format(date_precision?)?;
+    format_album_release_date_with(release_date, format, length)
+}
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum AlbumColumn {
@@ -128,18 +170,9 @@ impl TableData<AlbumColumn> for Album {
                 .get_artist_name_by_id(self.artist_id)
                 .ok()
                 .map(|v| (*v).clone().into()),
-            AlbumColumn::Date => match self.date_precision {
-                Some(1) => self.release_date.as_ref().and_then(|d| {
-                    chrono::NaiveDate::parse_from_str(d.0.as_str(), "%Y-%m-%d")
-                        .ok()
-                        .map(|nd| nd.format("%x").to_string().into())
-                }),
-                Some(0) => self
-                    .release_date
-                    .as_ref()
-                    .map(|d| d.0.as_str()[..4].to_string().into()),
-                _ => None,
-            },
+            AlbumColumn::Date => {
+                format_album_release_date(self.release_date.as_ref(), self.date_precision)
+            }
             AlbumColumn::Label => self.label.as_ref().map(|v| v.0.clone()),
             AlbumColumn::CatalogNumber => self.catalog_number.as_ref().map(|v| v.0.clone()),
         }
@@ -174,10 +207,10 @@ impl TableData<AlbumColumn> for Album {
         let mut columns: IndexMap<AlbumColumn, f32, FxBuildHasher> = IndexMap::with_hasher(s);
         columns.insert(AlbumColumn::Title, 300.0);
         columns.insert(AlbumColumn::Artist, 200.0);
-        columns.insert(AlbumColumn::Date, 100.0);
+        columns.insert(AlbumColumn::Date, 125.0);
         columns.insert(AlbumColumn::Label, 150.0);
         // length is weird because the image column is 47.0
-        columns.insert(AlbumColumn::CatalogNumber, 203.0);
+        columns.insert(AlbumColumn::CatalogNumber, 178.0);
         columns
     }
 
@@ -235,16 +268,13 @@ impl TableData<AlbumColumn> for Album {
             GridContext::Standalone => None,
         };
 
-        let year_part: Option<String> = self
-            .release_date
-            .as_ref()
-            .map(|d| d.0.as_str()[..4].to_string());
-
-        let secondary = match (artist_part, year_part) {
-            (Some(a), Some(y)) => Some(format!("{} • {}", a, y).into()),
-            (Some(a), None) => Some(SharedString::from(a)),
-            (None, Some(y)) => Some(SharedString::from(y)),
-            (None, None) => None,
+        let secondary = match artist_part {
+            Some(artist) => {
+                format_album_release_date_with(self.release_date.as_ref(), "Y", "medium")
+                    .map(|year| format!("{artist} • {year}").into())
+                    .or(Some(SharedString::from(artist)))
+            }
+            None => format_album_release_date(self.release_date.as_ref(), self.date_precision),
         };
 
         Some((title, secondary))
@@ -606,5 +636,38 @@ impl TableData<ArtistColumn> for ArtistWithCounts {
         columns.insert(ArtistColumn::Albums, 150.0);
         columns.insert(ArtistColumn::Tracks, 150.0);
         columns
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{album_release_date_format, parse_album_release_date};
+    use crate::library::types::{
+        DATE_PRECISION_FULL_DATE, DATE_PRECISION_YEAR, DATE_PRECISION_YEAR_MONTH, DBString,
+    };
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn selects_release_date_formats_for_each_precision() {
+        assert_eq!(
+            album_release_date_format(DATE_PRECISION_YEAR),
+            Some(("Y", "medium"))
+        );
+        assert_eq!(
+            album_release_date_format(DATE_PRECISION_YEAR_MONTH),
+            Some(("YM", "medium"))
+        );
+        assert_eq!(
+            album_release_date_format(DATE_PRECISION_FULL_DATE),
+            Some(("YMD", "medium"))
+        );
+    }
+
+    #[test]
+    fn parses_stored_release_dates_at_utc_midnight() {
+        assert_eq!(
+            parse_album_release_date(&DBString::from("1995-06-01")),
+            Some(Utc.with_ymd_and_hms(1995, 6, 1, 0, 0, 0).single().unwrap())
+        );
     }
 }
