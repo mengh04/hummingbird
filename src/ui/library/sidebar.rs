@@ -13,6 +13,7 @@ use crate::settings::storage::DEFAULT_SIDEBAR_WIDTH;
 const COLLAPSED_SIDEBAR_WIDTH: Pixels = px(52.0);
 
 use crate::ui::components::icons::{MENU, SIDEBAR, SIDEBAR_INACTIVE};
+use crate::ui::components::tooltip::build_tooltip;
 use crate::{
     library::{db::LibraryAccess, types::TrackStats},
     ui::{
@@ -107,13 +108,21 @@ impl Render for Sidebar {
             .child(
                 nav_button("search", SEARCH)
                     .w(px(38.0))
+                    .tooltip(build_tooltip(tr!("SEARCH")))
                     .on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(Search), cx);
                     }),
             )
             .child(
                 nav_button("sidebar-toggle", toggle_icon)
-                    .when(!collapsed, |this| this.ml_auto())
+                    .when_else(
+                        !collapsed,
+                        |this| {
+                            this.ml_auto()
+                                .tooltip(build_tooltip(tr!("COLLAPSE_SIDEBAR", "Collapse Sidebar")))
+                        },
+                        |this| this.tooltip(build_tooltip(tr!("EXPAND_SIDEBAR", "Expand Sidebar"))),
+                    )
                     .w(px(38.0))
                     .on_click(move |_, _, cx| {
                         sidebar_collapsed_entity.update(cx, |v, cx| {

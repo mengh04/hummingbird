@@ -19,6 +19,7 @@ use crate::{
             menu::{menu, menu_item, menu_separator},
             nav_button::nav_button,
             scrollbar::{RightPad, ScrollableHandle, floating_scrollbar},
+            tooltip::build_tooltip,
         },
         library::{ViewSwitchMessage, add_to_playlist::AddToPlaylist},
     },
@@ -455,7 +456,8 @@ impl Render for Queue {
                             .ml_auto()
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                                 this.show_queue.update(cx, |v, _| *v = !(*v))
-                            })),
+                            }))
+                            .tooltip(build_tooltip(tr!("CLOSE", "Close"))),
                     ),
                 ),
             )

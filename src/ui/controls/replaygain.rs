@@ -5,6 +5,7 @@ use crate::{
         labeled_slider::labeled_slider,
         popover::{PopoverPosition, popover},
         segmented_control::segmented_control,
+        tooltip::build_tooltip,
     },
 };
 use cntp_i18n::tr;
@@ -62,6 +63,7 @@ impl Render for ReplayGainButton {
                     .border_color(theme.playback_button_border)
                     .id("rg-button")
                     .cursor_pointer()
+                    .tooltip(build_tooltip(tr!("REPLAY_GAIN", "ReplayGain")))
                     .bg(theme.playback_button)
                     .hover(|this| this.bg(theme.playback_button_hover))
                     .active(|this| this.bg(theme.playback_button_active))

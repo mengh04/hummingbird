@@ -24,12 +24,15 @@ use crate::{
                 grid_item::GridItem,
                 table_data::{GridContext, TABLE_MAX_WIDTH},
             },
+            tooltip::build_tooltip,
             uniform_grid::uniform_grid,
         },
-        library::context_menus::AlbumContextMenuContext,
-        library::track_listing::{
-            ArtistNameVisibility,
-            track_item::{TrackItem, TrackItemLeftField},
+        library::{
+            context_menus::AlbumContextMenuContext,
+            track_listing::{
+                ArtistNameVisibility,
+                track_item::{TrackItem, TrackItemLeftField},
+            },
         },
         models::{Models, PlaybackInfo, PlaylistEvent},
         theme::Theme,
@@ -370,7 +373,18 @@ impl Render for ArtistDetailView {
                                                     })
                                                     .text_color(theme.text_secondary)
                                                     .size(px(20.0)),
-                                                ),
+                                                )
+                                                .tooltip(if Self::is_descending(self.liked_sort) {
+                                                    build_tooltip(tr!(
+                                                        "SORT_ASCENDING",
+                                                        "Sort Ascending"
+                                                    ))
+                                                } else {
+                                                    build_tooltip(tr!(
+                                                        "SORT_DESCENDING",
+                                                        "Sort Descending"
+                                                    ))
+                                                }),
                                         )
                                         .child(
                                             dropdown::<LikedTrackSortMethod>(

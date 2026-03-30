@@ -7,8 +7,11 @@ mod table_item;
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    settings::storage::{TableSettings, TableViewModeSetting},
-    settings::{SettingsGlobal, interface::clamp_grid_min_item_width},
+    settings::{
+        SettingsGlobal,
+        interface::clamp_grid_min_item_width,
+        storage::{TableSettings, TableViewModeSetting},
+    },
     ui::{
         caching::hummingbird_cache,
         components::{
@@ -18,6 +21,7 @@ use crate::{
             menu::{menu, menu_check_item},
             nav_button::nav_button,
             scrollbar::{RightPad, floating_scrollbar},
+            tooltip::build_tooltip,
             uniform_grid::uniform_grid,
         },
         models::Models,
@@ -25,6 +29,7 @@ use crate::{
         util::{create_or_retrieve_view, prune_views},
     },
 };
+use cntp_i18n::tr;
 use column_resize_handle::column_resize_handle;
 use gpui::{prelude::FluentBuilder, *};
 use indexmap::IndexMap;
@@ -603,7 +608,8 @@ where
                                 .when(!is_grid, |this| {
                                     this.bg(theme.nav_button_pressed)
                                         .border_color(theme.nav_button_pressed_border)
-                                }),
+                                })
+                                .tooltip(build_tooltip(tr!("LIST_VIEW", "List View"))),
                         )
                         .child(
                             nav_button("grid_toggle", if is_grid { GRID } else { GRID_INACTIVE })
@@ -616,7 +622,8 @@ where
                                 .when(is_grid, |this| {
                                     this.bg(theme.nav_button_pressed)
                                         .border_color(theme.nav_button_pressed_border)
-                                }),
+                                })
+                                .tooltip(build_tooltip(tr!("GRID_VIEW", "Grid View"))),
                         ),
                 )
             });
