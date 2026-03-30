@@ -29,15 +29,19 @@ cpal = "0.17"
 dateparser = "0.2"
 derive_more = { version = "2", features = ["debug"] }
 directories = "6"
+discord-rich-presence = "1"
+file-rotate = "0.8.0"
 futures = "0.3"
 globwalk = "0.9"
 gpui = "0.2.2"
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["wayland", "x11", "font-kit"] }
 image = "0.25"
 indexmap = { version = "2", features = ["serde"] }
+infer = "0.19"
 intx = "0.1"
 itertools = "0.14"
 md5 = "0.8"
+minisign-verify = { version = "0.2", optional = true }
 moka = { version = "0.12", features = ["sync"] }
 notify = "8"
 nucleo = "0.5"
@@ -52,10 +56,12 @@ rust-embed = "8"
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+semver = { version = "1", optional = true }
 smallvec = "1"
 sqlx = { version = "0.8", features = ["chrono", "runtime-tokio", "sqlite"] }
 symphonia = { version = "0.5", features = ["all", "opt-simd"] }
 symphonia-adapter-libopus = "0.2"
+sysinfo = "0.31"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1", features = ["io-util"] }
@@ -70,12 +76,6 @@ zed-reqwest = { version = "0.12.15-zed", default-features = false, features = [
     # this was native-roots, but this caused intermittent issues on Windows
     "rustls-tls-webpki-roots",
 ] }
-sysinfo = "0.31"
-discord-rich-presence = "1"
-file-rotate = "0.8.0"
-semver = { version = "1", optional = true }
-minisign-verify = { version = "0.2", optional = true }
-infer = "0.19"
 
 
 [patch.crates-io]
@@ -83,8 +83,8 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 
 [build-dependencies]
 anyhow = "1"
-dotenvy = "0.15"
 cntp_i18n_gen = "0.1"
+dotenvy = "0.15"
 vergen = { version = "9", features = ["build"] }
 
 [target.'cfg(not(all(target_os = "windows", target_arch = "aarch64")))'.dependencies]
