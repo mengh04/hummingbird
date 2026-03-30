@@ -11,6 +11,7 @@ use tracing::error;
 use crate::{
     library::{
         db::LibraryAccess,
+        playlist::export_playlist,
         types::{PlaylistType, PlaylistWithCount},
     },
     settings::SettingsGlobal,
@@ -18,7 +19,7 @@ use crate::{
         components::{
             button::{ButtonIntent, button},
             context::context,
-            icons::{CROSS, PENCIL, PLAYLIST, PLUS, STAR},
+            icons::{CROSS, FILE_EXPORT, PENCIL, PLAYLIST, PLUS, STAR},
             menu::{menu, menu_item},
             popover::{PopoverPosition, popover},
             scrollbar::{RightPad, floating_scrollbar},
@@ -198,7 +199,7 @@ impl Render for PlaylistList {
             );
 
             if collapsed {
-                item = item.collapsed().collapsed_label(playlist_label);
+                item = item.collapsed().collapsed_label(&playlist_label);
             } else {
                 item = item
                     .child(
@@ -239,19 +240,20 @@ impl Render for PlaylistList {
                     |this| this.active(),
                 );
 
-            if playlist.playlist_type != PlaylistType::System {
-                let rename_open = self.rename_popover_playlist == Some(pl_id);
-                let weak_self = weak_entity.clone();
-                let weak_self2 = weak_entity.clone();
+            let rename_open = self.rename_popover_playlist == Some(pl_id);
+            let weak_self = weak_entity.clone();
+            let weak_self2 = weak_entity.clone();
+            let is_system_playlist = playlist.playlist_type == PlaylistType::System;
 
-                main = main.child(
-                    div()
-                        .relative()
-                        .child(
-                            context(("playlist", pl_id as usize)).with(item).child(
-                                div().bg(theme.elevated_background).child(
-                                    menu()
-                                        .item(menu_item(
+            main = main.child(
+                div()
+                    .relative()
+                    .child(
+                        context(("playlist", pl_id as usize)).with(item).child(
+                            div().bg(theme.elevated_background).child(
+                                menu()
+                                    .when(!is_system_playlist, |menu| {
+                                        menu.item(menu_item(
                                             "rename_playlist",
                                             Some(PENCIL),
                                             tr!("RENAME_PLAYLIST", "Rename playlist"),
@@ -268,7 +270,20 @@ impl Render for PlaylistList {
                                                 }
                                             },
                                         ))
-                                        .item(menu_item(
+                                    })
+                                    .item(menu_item(
+                                        "export_playlist",
+                                        Some(FILE_EXPORT),
+                                        tr!("EXPORT_PLAYLIST", "Export to M3U"),
+                                        {
+                                            move |_, _, cx| {
+                                                // TODO: when toasts are added show this error
+                                                let _ = export_playlist(cx, pl_id, &playlist_label);
+                                            }
+                                        },
+                                    ))
+                                    .when(!is_system_playlist, |menu| {
+                                        menu.item(menu_item(
                                             "delete_playlist",
                                             Some(CROSS),
                                             tr!("DELETE_PLAYLIST", "Delete playlist"),
@@ -297,63 +312,59 @@ impl Render for PlaylistList {
                                                     cx.notify();
                                                 })
                                             },
-                                        )),
-                                ),
+                                        ))
+                                    }),
                             ),
+                        ),
+                    )
+                    .when(rename_open && !is_system_playlist, |this| {
+                        this.child(
+                            popover()
+                                .position(PopoverPosition::RightTop)
+                                .edge_offset(px(12.0))
+                                .on_dismiss(move |_, cx| {
+                                    if let Some(entity) = weak_self2.upgrade() {
+                                        entity.update(cx, |this, cx| this.close_rename_popover(cx));
+                                    }
+                                })
+                                .min_w(px(250.0))
+                                .flex()
+                                .flex_col()
+                                .gap(px(6.0))
+                                .on_any_mouse_down(|_, _, cx| {
+                                    cx.stop_propagation();
+                                })
+                                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.close_rename_popover(cx);
+                                }))
+                                .child(rename_input.clone())
+                                .child(
+                                    div()
+                                        .flex()
+                                        .justify_end()
+                                        .gap(px(6.0))
+                                        .child(
+                                            button()
+                                                .id(("cancel-rename", pl_id as u64))
+                                                .child(tr!("CANCEL"))
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.close_rename_popover(cx);
+                                                })),
+                                        )
+                                        .child(
+                                            button()
+                                                .id(("rename-playlist", pl_id as u64))
+                                                .intent(ButtonIntent::Primary)
+                                                .child(tr!("RENAME", "Rename"))
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.handle_rename_submit(cx);
+                                                })),
+                                        ),
+                                ),
                         )
-                        .when(rename_open, |this| {
-                            this.child(
-                                popover()
-                                    .position(PopoverPosition::RightTop)
-                                    .edge_offset(px(12.0))
-                                    .on_dismiss(move |_, cx| {
-                                        if let Some(entity) = weak_self2.upgrade() {
-                                            entity.update(cx, |this, cx| {
-                                                this.close_rename_popover(cx)
-                                            });
-                                        }
-                                    })
-                                    .min_w(px(250.0))
-                                    .flex()
-                                    .flex_col()
-                                    .gap(px(6.0))
-                                    .on_any_mouse_down(|_, _, cx| {
-                                        cx.stop_propagation();
-                                    })
-                                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.close_rename_popover(cx);
-                                    }))
-                                    .child(rename_input.clone())
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .justify_end()
-                                            .gap(px(6.0))
-                                            .child(
-                                                button()
-                                                    .id(("cancel-rename", pl_id as u64))
-                                                    .child(tr!("CANCEL"))
-                                                    .on_click(cx.listener(|this, _, _, cx| {
-                                                        this.close_rename_popover(cx);
-                                                    })),
-                                            )
-                                            .child(
-                                                button()
-                                                    .id(("rename-playlist", pl_id as u64))
-                                                    .intent(ButtonIntent::Primary)
-                                                    .child(tr!("RENAME", "Rename"))
-                                                    .on_click(cx.listener(|this, _, _, cx| {
-                                                        this.handle_rename_submit(cx);
-                                                    })),
-                                            ),
-                                    ),
-                            )
-                        }),
-                );
-            } else {
-                main = main.child(item);
-            }
+                    }),
+            );
         }
 
         let popover_open = self.popover_open;

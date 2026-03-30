@@ -52,3 +52,4 @@ pub const FOLDER_X: &str = "!bundled:icons/folder-x.svg";
 pub const MICROPHONE: &str = "!bundled:icons/microphone-2.svg";
 pub const PENCIL: &str = "!bundled:icons/pencil.svg";
 pub const UPDATE: &str = "!bundled:icons/arrow-big-down-lines.svg";
+pub const FILE_EXPORT: &str = "!bundled:icons/file-export.svg";

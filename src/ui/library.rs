@@ -40,7 +40,7 @@ mod artist_view;
 pub mod context_menus;
 pub mod missing_folder_dialog;
 mod navigation;
-mod playlist_view;
+pub mod playlist_view;
 mod release_view;
 mod sidebar;
 mod track_listing;
@@ -485,6 +485,13 @@ impl Render for Library {
                 .into_any_element()
         };
 
+        App::on_action(cx, move |_: &Import, cx| {
+            show_update_playlist.update(cx, |v, cx| {
+                *v = true;
+                cx.notify();
+            })
+        });
+
         let content = if let (true, Some(left), Some(right)) = (
             two_column,
             self.left_view.as_ref(),
@@ -555,12 +562,6 @@ impl Render for Library {
                     cx.emit(ViewSwitchMessage::Forward);
                 });
             }))
-            .on_action(move |_: &Import, _, cx| {
-                show_update_playlist.update(cx, |v, cx| {
-                    *v = true;
-                    cx.notify();
-                })
-            })
             .on_mouse_down(
                 MouseButton::Navigate(gpui::NavigationDirection::Back),
                 |_, _, cx| {

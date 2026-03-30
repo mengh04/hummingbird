@@ -8,6 +8,7 @@ use crate::{
     ui::{
         command_palette::OpenPalette,
         components::menus_builder::{MenuBuilder, MenusBuilder, menu_item, menu_separator},
+        library::playlist_view,
         settings::open_settings_window,
         troubleshooting::{CopyTroubleshootingInfo, OpenLog, copy_troubleshooting_info, open_log},
     },
@@ -129,6 +130,11 @@ pub fn register_actions(cx: &mut App) {
                 .add_item(menu_item(
                     tr!("LIBRARY_FORCE_RESCAN", "Rescan Entire Library"),
                     ForceScan,
+                    false,
+                ))
+                .add_item(menu_item(
+                    tr!("ACTION_IMPORT_PLAYLIST"),
+                    playlist_view::Import,
                     false,
                 )),
         )
