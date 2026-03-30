@@ -4,7 +4,10 @@ mod discover;
 mod record;
 
 use std::{
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -200,7 +203,7 @@ async fn run_scanner(
     let scan_record_path = directory.join("scan_record.hsr");
     let checkpoint_path = directory.join("scan_record_checkpoint.hsr");
     let legacy_scan_record_path = directory.join("scan_record.json");
-    let mut scan_record: ScanRecord = if try_exists(&legacy_scan_record_path)
+    let mut scan_record_state = if try_exists(&legacy_scan_record_path)
         .await
         .unwrap_or_default()
     {
@@ -254,15 +257,16 @@ async fn run_scanner(
     // attempt to recover checkpoint data from a previous crashed scan
     if try_exists(&checkpoint_path).await.unwrap_or(false) {
         let checkpoint = load_scan_record(&checkpoint_path).await;
-        let base_dirs: FxHashSet<Utf8PathBuf> = scan_record.directories.iter().cloned().collect();
+        let base_dirs: FxHashSet<Utf8PathBuf> =
+            scan_record_state.directories.iter().cloned().collect();
         for dir in checkpoint.directories {
             if !base_dirs.contains(&dir) {
-                scan_record.directories.push(dir);
+                scan_record_state.directories.push(dir);
             }
         }
         let added = checkpoint.records.len();
         for (path, timestamp) in checkpoint.records {
-            scan_record.records.insert(path, timestamp);
+            scan_record_state.records.insert(path, timestamp);
         }
         if let Err(e) = tokio::fs::remove_file(&checkpoint_path).await {
             warn!(
@@ -273,21 +277,31 @@ async fn run_scanner(
         info!(
             "Merged scan record checkpoint ({} entries, {} total)",
             added,
-            scan_record.records.len()
+            scan_record_state.records.len()
         );
     }
 
+    let mut scan_record_slot = Some(scan_record_state);
+    let mut pending_start: Option<bool> = None;
+
     loop {
-        let mut is_force = loop {
-            match command_rx.recv().await {
-                Some(ScanCommand::Scan) => break false,
-                Some(ScanCommand::ForceScan) => break true,
-                Some(ScanCommand::ResolveMissingFolders(_)) => {}
-                Some(ScanCommand::UpdateSettings(s)) => {
-                    scan_settings = s;
+        let mut scan_record = scan_record_slot
+            .take()
+            .expect("scan record should always be present between scan iterations");
+        let mut is_force = if let Some(force) = pending_start.take() {
+            force
+        } else {
+            loop {
+                match command_rx.recv().await {
+                    Some(ScanCommand::Scan) => break false,
+                    Some(ScanCommand::ForceScan) => break true,
+                    Some(ScanCommand::ResolveMissingFolders(_)) => {}
+                    Some(ScanCommand::UpdateSettings(s)) => {
+                        scan_settings = s;
+                    }
+                    Some(ScanCommand::Stop) => continue,
+                    None => return, // channel closed, shut down
                 }
-                Some(ScanCommand::Stop) => continue,
-                None => return, // channel closed, shut down
             }
         };
 
@@ -372,12 +386,20 @@ async fn run_scanner(
         let (decode_fail_tx, mut decode_fail_rx) =
             tokio::sync::mpsc::channel::<(Utf8PathBuf, SystemTime)>(num_workers * 8);
 
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+
         // Discovery
         let mut settings_for_discover = scan_settings.clone();
         settings_for_discover.paths = available_paths;
         let scan_record_for_discover = scan_record_shared.clone();
+        let cancel_for_discover = Arc::clone(&cancel_flag);
         let discover_handle = spawn_blocking(move || {
-            discover(settings_for_discover, scan_record_for_discover, path_tx)
+            discover(
+                settings_for_discover,
+                scan_record_for_discover,
+                path_tx,
+                cancel_for_discover,
+            )
         });
 
         let path_rx_shared = Arc::new(Mutex::new(path_rx));
@@ -386,10 +408,15 @@ async fn run_scanner(
             let path_rx = Arc::clone(&path_rx_shared);
             let meta_tx = meta_tx.clone();
             let decode_fail_tx = decode_fail_tx.clone();
+            let cancel_flag = Arc::clone(&cancel_flag);
             spawn_blocking(move || {
                 let mut provider_table = build_provider_table();
                 let mut art_cache: FxHashMap<Utf8PathBuf, Option<Arc<[u8]>>> = FxHashMap::default();
                 loop {
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+
                     let item = {
                         let mut rx = path_rx.blocking_lock();
                         rx.blocking_recv()
@@ -397,15 +424,26 @@ async fn run_scanner(
                     let Some((path, timestamp)) = item else {
                         break; // channel closed, discovery complete
                     };
+
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+
                     if let Some(info) =
                         read_metadata_for_path(&path, &mut provider_table, &mut art_cache)
                     {
+                        if cancel_flag.load(Ordering::Relaxed) {
+                            break;
+                        }
+
                         if meta_tx.blocking_send((path, timestamp, info)).is_err() {
                             break;
                         }
                     } else {
                         warn!("Could not read metadata for file: {:?}", path);
-                        let _ = decode_fail_tx.blocking_send((path, timestamp));
+                        if decode_fail_tx.blocking_send((path, timestamp)).is_err() {
+                            break;
+                        }
                     }
                 }
             });
@@ -421,10 +459,11 @@ async fn run_scanner(
         let mut artist_cache: FxHashMap<String, i64> = FxHashMap::default();
         let mut album_cache: FxHashMap<AlbumCacheKey, i64> = FxHashMap::default();
         let mut album_path_cache: FxHashMap<AlbumPathCacheKey, Utf8PathBuf> = FxHashMap::default();
-        let mut tx = pool
-            .begin()
-            .await
-            .expect("could not begin scan transaction");
+        let mut tx = Some(
+            pool.begin()
+                .await
+                .expect("could not begin scan transaction"),
+        );
         let mut items_in_tx: usize = 0;
         let mut cancelled = false;
         let mut discovery_complete = false;
@@ -438,6 +477,29 @@ async fn run_scanner(
 
         loop {
             tokio::select! {
+                cmd = command_rx.recv() => {
+                    match cmd {
+                        Some(ScanCommand::Stop) => {
+                            cancelled = true;
+                            cancel_flag.store(true, Ordering::Relaxed);
+                            meta_rx.close();
+                            decode_fail_rx.close();
+                            break;
+                        }
+                        Some(ScanCommand::Scan) => {
+                            pending_start.get_or_insert(false);
+                        }
+                        Some(ScanCommand::ForceScan) => {
+                            pending_start = Some(true);
+                        }
+                        Some(ScanCommand::UpdateSettings(s)) => {
+                            scan_settings = s;
+                        }
+                        Some(ScanCommand::ResolveMissingFolders(_)) => {}
+                        None => return,
+                    }
+                }
+
                 // poll discovery until it stops running
                 result = &mut discover_handle, if !discovery_complete => {
                     let total = result.expect("discover task panicked");
@@ -451,7 +513,7 @@ async fn run_scanner(
                 }
 
                 // if a decode failed that file still needs to be in the scan record
-                Some((path, timestamp)) = decode_fail_rx.recv() => {
+                Some((path, timestamp)) = decode_fail_rx.recv(), if !cancelled => {
                     scan_checkpoint.lock().await.insert(path.clone(), timestamp);
                     let mut sr = scan_record_shared.lock().await;
                     sr.records.insert(path, timestamp);
@@ -460,7 +522,12 @@ async fn run_scanner(
                 item = meta_rx.recv() => {
                     let Some((path, timestamp, (metadata, length, image))) = item else {
                         if items_in_tx > 0 {
-                            if let Err(e) = tx.commit().await {
+                            if let Err(e) = tx
+                                .take()
+                                .expect("scan transaction should be active")
+                                .commit()
+                                .await
+                            {
                                 error!("Failed to commit final scan transaction: {:?}", e);
                                 pending_commit.clear();
                             } else {
@@ -473,36 +540,9 @@ async fn run_scanner(
                         break;
                     };
 
-                    // Check for cancellation / settings updates
-                    while let Ok(cmd) = command_rx.try_recv() {
-                        match cmd {
-                            ScanCommand::Stop => {
-                                cancelled = true;
-                            }
-                            ScanCommand::UpdateSettings(s) => {
-                                scan_settings = s;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if cancelled {
-                        if items_in_tx > 0 {
-                            if tx.commit().await.is_ok() {
-                                let mut sr = scan_record_shared.lock().await;
-                                for (p, ts) in pending_commit.drain(..) {
-                                    sr.records.insert(p, ts);
-                                }
-                            } else {
-                                pending_commit.clear();
-                            }
-                        }
-                        drop(meta_rx);
-                        break;
-                    }
-
                     let result = update_metadata(
-                        &mut tx,
+                        tx.as_mut()
+                            .expect("scan transaction should be active"),
                         &metadata,
                         &path,
                         length,
@@ -530,7 +570,12 @@ async fn run_scanner(
                     }
 
                     if items_in_tx >= BATCH_SIZE {
-                        if let Err(e) = tx.commit().await {
+                        if let Err(e) = tx
+                            .take()
+                            .expect("scan transaction should be active")
+                            .commit()
+                            .await
+                        {
                             error!("Failed to commit scan batch transaction: {:?}", e);
                             pending_commit.clear();
                         } else {
@@ -559,7 +604,11 @@ async fn run_scanner(
                                 write_checkpoint(checkpoint_arc, dirs, &path).await;
                             }));
                         }
-                        tx = pool.begin().await.expect("could not begin new scan transaction");
+                        tx = Some(
+                            pool.begin()
+                                .await
+                                .expect("could not begin new scan transaction"),
+                        );
                         items_in_tx = 0;
                     }
 
@@ -578,6 +627,9 @@ async fn run_scanner(
             }
         }
 
+        cancel_flag.store(true, Ordering::Relaxed);
+        drop(path_rx_shared);
+
         if !discovery_complete {
             let _ = discover_handle.await.expect("discover task panicked");
         }
@@ -592,6 +644,51 @@ async fn run_scanner(
         let time_end = std::time::Instant::now();
         let duration = time_end.duration_since(time_start);
 
+        if cancelled {
+            if items_in_tx > 0 {
+                if tx
+                    .take()
+                    .expect("scan transaction should be active")
+                    .commit()
+                    .await
+                    .is_ok()
+                {
+                    let mut ckpt = scan_checkpoint.lock().await;
+                    for (p, ts) in &pending_commit {
+                        ckpt.insert(p.clone(), *ts);
+                    }
+                    pending_commit.clear();
+                } else {
+                    pending_commit.clear();
+                }
+            }
+
+            info!(
+                "Scan cancelled after {} files in {} seconds, writing checkpoint only.",
+                scanned,
+                duration.as_secs_f32()
+            );
+
+            if let Some(handle) = checkpoint_handle.take() {
+                let _ = handle.await;
+            }
+            write_checkpoint(
+                Arc::clone(&scan_checkpoint),
+                checkpoint_dirs.clone(),
+                &checkpoint_path,
+            )
+            .await;
+
+            scan_record_slot = Some(
+                Arc::try_unwrap(scan_record_shared)
+                    .expect("scan_record Arc still has multiple owners")
+                    .into_inner(),
+            );
+
+            let _ = event_tx.send(ScanEvent::ScanCompleteIdle);
+            continue;
+        }
+
         info!(
             "Scan complete, {} files scanned in {} seconds, writing record.",
             scanned,
@@ -602,11 +699,19 @@ async fn run_scanner(
             let _ = handle.await;
         }
 
-        scan_record = Arc::try_unwrap(scan_record_shared)
-            .expect("scan_record Arc still has multiple owners")
-            .into_inner();
+        scan_record_slot = Some(
+            Arc::try_unwrap(scan_record_shared)
+                .expect("scan_record Arc still has multiple owners")
+                .into_inner(),
+        );
 
-        write_scan_record(&scan_record, &scan_record_path).await;
+        write_scan_record(
+            scan_record_slot
+                .as_ref()
+                .expect("scan record should be restored before writing"),
+            &scan_record_path,
+        )
+        .await;
 
         // remove checkpoint file after successful write
         if let Err(e) = tokio::fs::remove_file(&checkpoint_path).await

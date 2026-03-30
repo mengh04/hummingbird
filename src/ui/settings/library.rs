@@ -286,7 +286,9 @@ impl Render for LibrarySettings {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.scanning_modified = false;
 
-                                cx.global::<ScanInterface>().scan();
+                                let interface = cx.global::<ScanInterface>();
+                                interface.stop();
+                                interface.scan();
 
                                 cx.notify();
                             })),

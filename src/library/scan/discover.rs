@@ -1,5 +1,8 @@
 use std::{
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -281,6 +284,7 @@ pub fn discover(
     settings: ScanSettings,
     scan_record: Arc<Mutex<ScanRecord>>,
     path_tx: Sender<(Utf8PathBuf, SystemTime)>,
+    cancel_flag: Arc<AtomicBool>,
 ) -> u64 {
     let provider_table = build_provider_table();
     let mut visited: FxHashSet<Utf8PathBuf> = FxHashSet::default();
@@ -288,6 +292,10 @@ pub fn discover(
     let mut discovered_total: u64 = 0;
 
     while let Some(dir) = stack.pop() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
         if !visited.insert(dir.clone()) {
             continue;
         }
@@ -301,6 +309,10 @@ pub fn discover(
         };
 
         for entry in entries {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return discovered_total;
+            }
+
             let path = match entry {
                 Ok(entry) => match entry.path().canonicalize() {
                     Ok(p) => match Utf8PathBuf::try_from(p) {
@@ -335,6 +347,10 @@ pub fn discover(
 
                 if let Some(ts) = timestamp {
                     discovered_total += 1;
+
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        return discovered_total;
+                    }
 
                     if path_tx.blocking_send((path, ts)).is_err() {
                         return discovered_total;
