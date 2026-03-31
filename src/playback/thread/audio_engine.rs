@@ -123,7 +123,7 @@ impl AudioEngine {
         // Handle paused state - reset device if needed
         let mut recreation_required = false;
 
-        if self.state == EngineState::Paused
+        if self.state != EngineState::Playing
             && self.device.has_stream()
             && let Err(err) = self.device.reset()
         {
