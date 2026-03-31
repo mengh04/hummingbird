@@ -47,10 +47,15 @@ fn read_metadata(path: &Path) -> anyhow::Result<QueueItemUIData> {
     let mut stream = SymphoniaProvider.open(file, None)?;
     stream.start_playback()?;
 
-    let Metadata { name, artist, .. } = stream.read_metadata()?;
+    let Metadata {
+        name,
+        artist,
+        album_artist,
+        ..
+    } = stream.read_metadata()?;
     let mut ui_data = QueueItemUIData {
         name: name.as_ref().map(Into::into),
-        artist_name: artist.as_ref().map(Into::into),
+        artist_name: artist.as_ref().or(album_artist.as_ref()).map(Into::into),
         source: DataSource::Metadata,
         image: None,
         duration: stream.duration_secs().ok().map(|s| s as i64),

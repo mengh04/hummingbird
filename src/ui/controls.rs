@@ -115,7 +115,11 @@ impl InfoSection {
                 let metadata = m.read(cx);
 
                 this.track_name = metadata.name.clone().map(SharedString::from);
-                this.artist_name = metadata.artist.clone().map(SharedString::from);
+                this.artist_name = metadata
+                    .artist
+                    .clone()
+                    .or(metadata.album_artist.clone())
+                    .map(SharedString::from);
 
                 cx.notify();
             })
