@@ -95,9 +95,9 @@
   "NEXT_TRACK": "Ďalšia skladba",
   "NO_LYRICS": "Žiadny text skladby",
   "PALETTE_SHOW_MORE": {
-    "one": "",
-    "few": "",
-    "other": ""
+    "one": "Zobraziť ďalšiu {{count}}...",
+    "few": "Zobraziť ďalšie {{count}}...",
+    "other": "Zobraziť ďalších {{count}}..."
   },
   "PATREON": "Podporte nás na Patreone",
   "PAUSE": "Pozastaviť",
