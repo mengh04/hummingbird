@@ -32,7 +32,7 @@ use std::{path::PathBuf, rc::Rc};
 use self::replaygain::ReplayGainButton;
 use super::{
     components::{
-        resizable::{resizable, ResizeEdge},
+        resizable::{ResizeEdge, resizable},
         slider::slider,
     },
     constants::APP_ROUNDING,

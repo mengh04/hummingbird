@@ -228,6 +228,19 @@ enum LibraryView {
     ArtistDetail(Entity<ArtistDetailView>),
 }
 
+impl LibraryView {
+    fn split_key(&self) -> &'static str {
+        match self {
+            LibraryView::Album(_) => "albums",
+            LibraryView::Tracks(_) => "tracks",
+            LibraryView::Artists(_) => "artists",
+            LibraryView::Playlist(_) => "playlist",
+            LibraryView::Release(_) => "albums",
+            LibraryView::ArtistDetail(_) => "artists",
+        }
+    }
+}
+
 pub struct Library {
     view: LibraryView,
     left_view: Option<LibraryView>,
@@ -448,8 +461,15 @@ impl Library {
             )
             .detach();
 
-            let split_width = cx.global::<Models>().split_width.clone();
-            cx.observe(&split_width, |_, _, cx| cx.notify()).detach();
+            let split_width_entities: Vec<Entity<Pixels>> = cx
+                .global::<Models>()
+                .split_widths
+                .values()
+                .cloned()
+                .collect();
+            for sw in split_width_entities {
+                cx.observe(&sw, |_, _, cx| cx.notify()).detach();
+            }
 
             let focus_handle = cx.focus_handle();
 
@@ -549,7 +569,12 @@ impl Render for Library {
             self.right_view.as_ref(),
         ) {
             // two column
-            let split_width_model = cx.global::<Models>().split_width.clone();
+            let key = left.split_key();
+            let split_widths = &cx.global::<Models>().split_widths;
+            let split_width_model = split_widths
+                .get(key)
+                .unwrap_or_else(|| split_widths.get("albums").unwrap())
+                .clone();
 
             div()
                 .w_full()

@@ -77,6 +77,13 @@ pub struct TableSettings {
     pub view_mode: TableViewModeSetting,
 }
 
+fn default_split_fractions() -> HashMap<String, f32> {
+    HashMap::new()
+}
+
+/// The four view keys that have independent split fractions.
+pub const SPLIT_FRACTION_KEYS: [&str; 4] = ["albums", "tracks", "artists", "playlist"];
+
 /// Data to store while quitting the app
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageData {
@@ -89,9 +96,13 @@ pub struct StorageData {
     /// Width of the queue panel in pixels
     #[serde(default = "default_queue_width")]
     pub queue_width: f32,
-    /// Fraction (0..1) of the two-column split pane width
+    /// Legacy single split fraction – kept for backward compatibility when
+    /// reading old config files.  New saves always populate `split_fractions`.
     #[serde(default = "default_split_fraction")]
     pub split_fraction: f32,
+    /// Per-view split fractions keyed by view name (albums, tracks, artists, playlist).
+    #[serde(default = "default_split_fractions")]
+    pub split_fractions: HashMap<String, f32>,
     #[serde(default = "default_table_settings")]
     pub table_settings: HashMap<String, TableSettings>,
     #[serde(default = "default_liked_tracks_sort_method")]
@@ -120,8 +131,20 @@ impl StorageData {
         px(self.queue_width)
     }
 
-    pub fn split_fraction(&self) -> Pixels {
-        px(self.split_fraction)
+    /// Return the split fraction for a specific view key (e.g. "albums").
+    /// Falls back to the legacy `split_fraction` field, then to the compiled default.
+    pub fn split_fraction_for(&self, key: &str) -> Pixels {
+        if let Some(&f) = self.split_fractions.get(key)
+            && f > 0.0
+        {
+            return px(f);
+        }
+        // Legacy / migration path
+        if self.split_fraction > 0.0 {
+            px(self.split_fraction)
+        } else {
+            DEFAULT_SPLIT_FRACTION
+        }
     }
 
     pub fn lyrics_fraction(&self) -> Pixels {
@@ -145,6 +168,7 @@ impl Default for StorageData {
             sidebar_width: f32::from(DEFAULT_SIDEBAR_WIDTH),
             queue_width: f32::from(DEFAULT_QUEUE_WIDTH),
             split_fraction: f32::from(DEFAULT_SPLIT_FRACTION),
+            split_fractions: HashMap::new(),
             table_settings: HashMap::new(),
             liked_tracks_sort_method: default_liked_tracks_sort_method(),
             sidebar_collapsed: false,
@@ -273,6 +297,10 @@ mod tests {
             sidebar_width: 300.0,
             queue_width: 410.0,
             split_fraction: 0.6,
+            split_fractions: HashMap::from([
+                ("albums".to_string(), 0.55),
+                ("tracks".to_string(), 0.45),
+            ]),
             table_settings,
             liked_tracks_sort_method: LikedTrackSortMethod::RecentlyAddedAsc,
             sidebar_collapsed: true,
@@ -297,6 +325,7 @@ mod tests {
         assert_eq!(loaded.sidebar_width, expected.sidebar_width);
         assert_eq!(loaded.queue_width, expected.queue_width);
         assert_eq!(loaded.split_fraction, expected.split_fraction);
+        assert_eq!(loaded.split_fractions, expected.split_fractions);
         assert_eq!(
             loaded.liked_tracks_sort_method,
             expected.liked_tracks_sort_method
@@ -338,6 +367,7 @@ mod tests {
             sidebar_width: 280.0,
             queue_width: 350.0,
             split_fraction: 0.55,
+            split_fractions: HashMap::from([("artists".to_string(), 0.60)]),
             table_settings,
             liked_tracks_sort_method: LikedTrackSortMethod::TitleDesc,
             sidebar_collapsed: true,
@@ -358,6 +388,7 @@ mod tests {
         assert_eq!(loaded.sidebar_width, stored.sidebar_width);
         assert_eq!(loaded.queue_width, stored.queue_width);
         assert_eq!(loaded.split_fraction, stored.split_fraction);
+        assert_eq!(loaded.split_fractions, stored.split_fractions);
         assert_eq!(
             loaded.liked_tracks_sort_method,
             stored.liked_tracks_sort_method

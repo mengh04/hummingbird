@@ -30,8 +30,8 @@ use crate::{
         SettingsGlobal,
         interface::StartupLibraryView,
         storage::{
-            DEFAULT_LYRICS_FRACTION, DEFAULT_QUEUE_WIDTH, DEFAULT_SIDEBAR_WIDTH,
-            DEFAULT_SPLIT_FRACTION, StorageData, TableSettings,
+            DEFAULT_LYRICS_FRACTION, DEFAULT_QUEUE_WIDTH, DEFAULT_SIDEBAR_WIDTH, StorageData,
+            TableSettings,
         },
     },
     ui::{data::Decode, library::ViewSwitchMessage},
@@ -73,7 +73,7 @@ pub struct Models {
     pub playlist_tracker: Entity<PlaylistInfoTransfer>,
     pub sidebar_width: Entity<Pixels>,
     pub queue_width: Entity<Pixels>,
-    pub split_width: Entity<Pixels>,
+    pub split_widths: std::collections::HashMap<String, Entity<Pixels>>,
     pub table_settings: Entity<std::collections::HashMap<String, TableSettings>>,
     pub liked_tracks_sort_method: Entity<LikedTrackSortMethod>,
     pub sidebar_collapsed: Entity<bool>,
@@ -343,13 +343,16 @@ pub fn build_models(
             DEFAULT_QUEUE_WIDTH
         }
     });
-    let split_width: Entity<Pixels> = cx.new(|_| {
-        if storage_data.split_fraction > 0.0 {
-            storage_data.split_fraction()
-        } else {
-            DEFAULT_SPLIT_FRACTION
-        }
-    });
+    let split_widths: std::collections::HashMap<String, Entity<Pixels>> = {
+        use crate::settings::storage::SPLIT_FRACTION_KEYS;
+        SPLIT_FRACTION_KEYS
+            .iter()
+            .map(|key| {
+                let value = cx.new(|_| storage_data.split_fraction_for(key));
+                (key.to_string(), value)
+            })
+            .collect()
+    };
 
     let table_settings = cx.new(|_| storage_data.table_settings.clone());
     let liked_tracks_sort_method = cx.new(|_| storage_data.liked_tracks_sort_method);
@@ -394,7 +397,7 @@ pub fn build_models(
         playlist_tracker,
         sidebar_width,
         queue_width,
-        split_width,
+        split_widths,
         table_settings,
         liked_tracks_sort_method,
         sidebar_collapsed,
