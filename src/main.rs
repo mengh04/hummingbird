@@ -34,6 +34,7 @@ static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .worker_threads(2)
+        .max_blocking_threads(12)
         .build()
         .unwrap()
 });
