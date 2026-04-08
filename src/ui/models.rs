@@ -34,7 +34,7 @@ use crate::{
             TableSettings,
         },
     },
-    ui::{data::Decode, library::ViewSwitchMessage},
+    ui::library::ViewSwitchMessage,
 };
 
 // yes this looks a little silly
@@ -243,18 +243,6 @@ pub fn build_models(
     });
 
     let playlist_tracker: Entity<PlaylistInfoTransfer> = cx.new(|_| PlaylistInfoTransfer);
-
-    cx.subscribe(&albumart, |e, ev, cx| {
-        let img = ev.0.clone();
-        cx.decode_image(img, true, e).detach();
-    })
-    .detach();
-
-    cx.subscribe(&albumart_original, |e, ev, cx| {
-        let img = ev.0.clone();
-        cx.decode_image(img, false, e).detach();
-    })
-    .detach();
 
     let discord_mmbs = mmbs.clone();
     create_discord_mmbs(cx, &discord_mmbs, discord_rpc_enabled(cx));

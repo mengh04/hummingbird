@@ -11,7 +11,6 @@ use mpris_server::{
 };
 use raw_window_handle::RawWindowHandle;
 use tokio::sync::RwLock;
-use tracing::debug;
 use zbus::fdo;
 
 use crate::{
@@ -418,8 +417,6 @@ impl PlaybackController for MprisController {
 
         let b64 = BASE64_STANDARD.encode(album_art);
         let url = format!("data:image/jpeg;base64,{}", b64);
-
-        debug!("Album art changed to {}", url);
 
         data.last_album_art = Some(url);
         drop(data);

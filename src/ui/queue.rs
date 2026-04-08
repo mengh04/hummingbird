@@ -1,9 +1,6 @@
 use crate::{
     library::db::LibraryAccess,
-    playback::{
-        interface::PlaybackInterface,
-        queue::{DataSource, QueueItemData},
-    },
+    playback::{interface::PlaybackInterface, queue::QueueItemData},
     settings::SettingsGlobal,
     ui::{
         availability::is_track_path_available,
@@ -16,6 +13,7 @@ use crate::{
                 get_edge_scroll_direction, handle_drag_move, handle_drop, perform_edge_scroll,
             },
             icons::{CROSS, DISC, PLAYLIST_ADD, SHUFFLE, TRASH, USERS, icon},
+            managed_image::{ManagedImageKey, managed_image},
             menu::{menu, menu_item, menu_separator},
             nav_button::nav_button,
             scrollbar::{RightPad, ScrollableHandle, floating_scrollbar},
@@ -35,7 +33,7 @@ use super::{
     models::{Models, PlaybackInfo},
     scroll_follow::SmoothScrollFollow,
     theme::Theme,
-    util::{create_or_retrieve_view, drop_image_from_app, prune_views},
+    util::{create_or_retrieve_view_keyed, retain_views},
 };
 
 /// The list identifier for queue drag-drop operations
@@ -66,12 +64,6 @@ impl QueueItem {
         cx.new(move |cx| {
             cx.on_release(|m: &mut QueueItem, cx| {
                 if let Some(item) = m.item.as_mut() {
-                    let data = item.get_data(cx).read(cx).as_ref().unwrap();
-
-                    if let (Some(image), DataSource::Library) = (data.image.clone(), data.source) {
-                        drop_image_from_app(cx, image);
-                    }
-
                     item.drop_data(cx);
                 }
             })
@@ -84,9 +76,9 @@ impl QueueItem {
             })
             .detach();
 
-            let mut item_mut = item.clone();
-            let track_id = item_mut.as_ref().and_then(|item| item.get_db_id());
-            let data = item_mut.as_mut().unwrap().get_data(cx);
+            let item_ref = item.clone();
+            let track_id = item_ref.as_ref().and_then(|item| item.get_db_id());
+            let data = item_ref.as_ref().unwrap().get_data(cx);
 
             cx.observe(&data, |_, _, cx| {
                 cx.notify();
@@ -114,6 +106,10 @@ impl QueueItem {
             }
         })
     }
+
+    pub fn update_idx(&mut self, idx: usize) {
+        self.idx = idx;
+    }
 }
 
 impl Render for QueueItem {
@@ -137,7 +133,11 @@ impl Render for QueueItem {
                     && scroll_handle.should_draw_scrollbar()
             };
             let is_current = self.current == self.idx;
-            let album_art = item.image.as_ref().cloned();
+            let image_key = album_id.map(ManagedImageKey::Album).or_else(|| {
+                self.item
+                    .as_ref()
+                    .map(|i| ManagedImageKey::TrackFile(i.get_path().to_path_buf()))
+            });
             let idx = self.idx;
 
             let item_state =
@@ -204,12 +204,14 @@ impl Render for QueueItem {
                                 .w(px(36.0))
                                 .h(px(36.0))
                                 .flex_shrink_0()
-                                .when(album_art.is_some(), |div| {
+                                .when_some(image_key, |div, key| {
                                     div.child(
-                                        img(album_art.unwrap())
+                                        managed_image(("queue-art", idx), key)
                                             .w(px(36.0))
                                             .h(px(36.0))
-                                            .rounded(px(4.0)),
+                                            .object_fit(ObjectFit::Fill)
+                                            .rounded(px(4.0))
+                                            .thumb(),
                                     )
                                 }),
                         )
@@ -345,7 +347,6 @@ impl Render for QueueItem {
 
 pub struct Queue {
     views_model: Entity<FxHashMap<usize, Entity<QueueItem>>>,
-    render_counter: Entity<usize>,
     shuffling: Entity<bool>,
     show_queue: Entity<bool>,
     scroll_handle: UniformListScrollHandle,
@@ -361,7 +362,6 @@ impl Queue {
     pub fn new(cx: &mut App, show_queue: Entity<bool>) -> Entity<Self> {
         cx.new(|cx| {
             let views_model = cx.new(|_| FxHashMap::default());
-            let render_counter = cx.new(|_| 0);
             let items = cx.global::<Models>().queue.clone();
             let initial_queue_position = items.read(cx).position;
             let initial_has_current_track =
@@ -378,8 +378,17 @@ impl Queue {
                     this.scroll_follow.cancel();
                 }
 
-                this.views_model = cx.new(|_| FxHashMap::default());
-                this.render_counter = cx.new(|_| 0);
+                let valid_keys: Vec<usize> = cx
+                    .global::<Models>()
+                    .queue
+                    .read(cx)
+                    .data
+                    .read()
+                    .expect("could not read queue")
+                    .iter()
+                    .filter_map(|item| item.existing_slot_key())
+                    .collect();
+                retain_views(&this.views_model, &valid_keys, cx);
 
                 cx.notify();
             })
@@ -394,7 +403,6 @@ impl Queue {
 
             Self {
                 views_model,
-                render_counter,
                 shuffling,
                 show_queue,
                 scroll_handle: UniformListScrollHandle::new(),
@@ -425,7 +433,6 @@ impl Render for Queue {
             .len();
         let shuffling = *self.shuffling.read(cx);
         let views_model = self.views_model.clone();
-        let render_counter = self.render_counter.clone();
         let scroll_handle = self.scroll_handle.clone();
         let item_scroll_handle = scroll_handle.clone();
         let drag_drop_manager = self.drag_drop_manager.clone();
@@ -787,7 +794,6 @@ impl Render for Queue {
                     .child(
                         uniform_list("queue", queue_len, move |range, _, cx| {
                             let start = range.start;
-                            let is_templ_render = range.start == 0 && range.end == 1;
 
                             let queue = cx
                                 .global::<Models>()
@@ -808,17 +814,14 @@ impl Render for Queue {
                                     .enumerate()
                                     .map(|(idx, item)| {
                                         let idx = idx + start;
-
-                                        if !is_templ_render {
-                                            prune_views(&views_model, &render_counter, idx, cx);
-                                        }
+                                        let item_key = item.slot_key(cx);
 
                                         let drag_drop_manager = drag_drop_manager.clone();
                                         let scroll_handle = item_scroll_handle.clone();
 
-                                        div().child(create_or_retrieve_view(
+                                        let view = create_or_retrieve_view_keyed(
                                             &views_model,
-                                            idx,
+                                            item_key,
                                             move |cx| {
                                                 QueueItem::new(
                                                     cx,
@@ -829,7 +832,12 @@ impl Render for Queue {
                                                 )
                                             },
                                             cx,
-                                        ))
+                                        );
+                                        if view.read(cx).idx != idx {
+                                            view.update(cx, |q, _| q.update_idx(idx));
+                                        }
+
+                                        div().child(view)
                                     })
                                     .collect()
                             } else {

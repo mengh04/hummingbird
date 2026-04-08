@@ -12,6 +12,7 @@ use crate::{
                 MENU, MICROPHONE, NEXT_TRACK, PAUSE, PLAY, PREV_TRACK, REPEAT, REPEAT_OFF,
                 REPEAT_ONCE, SHUFFLE, VOLUME, VOLUME_OFF, icon,
             },
+            managed_image::{ManagedImageKey, managed_image},
             menu::{menu, menu_item},
             tooltip::build_tooltip,
             volume_tooltip::build_volume_tooltip,
@@ -21,7 +22,6 @@ use crate::{
             navigate_to_track_artist, resolve_library_track_by_path,
         },
         models::CurrentTrack,
-        util::{drop_image_from_app, find_art_file_for_path},
     },
 };
 use cntp_i18n::tr;
@@ -121,22 +121,19 @@ impl Render for Controls {
 pub struct InfoSection {
     track_name: Option<SharedString>,
     artist_name: Option<SharedString>,
-    albumart_actual: Option<ImageSource>,
-    albumart_original: Option<ImageSource>,
     playback_info: PlaybackInfo,
     is_hovering_art: bool,
     current_track_path: Option<PathBuf>,
     current_library_track: Option<Rc<Track>>,
     can_navigate_to_album: bool,
     can_navigate_to_artist: bool,
+    image_element_key: u64,
 }
 
 impl InfoSection {
     pub fn new(cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
             let metadata_model = cx.global::<Models>().metadata.clone();
-            let albumart_model = cx.global::<Models>().albumart.clone();
-            let albumart_original_model = cx.global::<Models>().albumart_original.clone();
             let playback_info = cx.global::<PlaybackInfo>().clone();
             let current_track_model = playback_info.current_track.clone();
 
@@ -156,55 +153,6 @@ impl InfoSection {
                     .map(SharedString::from);
 
                 cx.notify();
-            })
-            .detach();
-
-            cx.observe(&albumart_model, |this: &mut Self, m, cx| {
-                let image = m.read(cx).clone();
-                let old_image = this.albumart_actual.take();
-
-                if let Some(image) = image {
-                    // still load the thumbnail, even though we load the full quality artwork
-                    // needs to be done because our thumbnail is better downscaled than GPUI will
-                    // do on it's own
-                    this.albumart_actual = Some(ImageSource::Render(image));
-                } else {
-                    // attempt to find cover image in fs
-                    this.albumart_actual = this
-                        .current_track_path
-                        .as_ref()
-                        .and_then(|path| find_art_file_for_path(path))
-                        .map(|path| ImageSource::Resource(Resource::Path(path)));
-                }
-
-                cx.notify();
-
-                if let Some(ImageSource::Render(img)) = old_image {
-                    drop_image_from_app(cx, img);
-                }
-            })
-            .detach();
-
-            cx.observe(&albumart_original_model, |this: &mut Self, m, cx| {
-                let image = m.read(cx).clone();
-                let old_image = this.albumart_original.take();
-
-                if let Some(image) = image {
-                    this.albumart_original = Some(ImageSource::Render(image));
-                } else {
-                    // attempt to find cover image in fs
-                    this.albumart_original = this
-                        .current_track_path
-                        .as_ref()
-                        .and_then(|path| find_art_file_for_path(path))
-                        .map(|path| ImageSource::Resource(Resource::Path(path)));
-                }
-
-                cx.notify();
-
-                if let Some(ImageSource::Render(img)) = old_image {
-                    drop_image_from_app(cx, img);
-                }
             })
             .detach();
 
@@ -236,14 +184,13 @@ impl InfoSection {
             Self {
                 artist_name: None,
                 track_name: None,
-                albumart_actual: None,
-                albumart_original: None,
                 playback_info,
                 is_hovering_art: false,
                 current_track_path,
                 current_library_track,
                 can_navigate_to_album,
                 can_navigate_to_artist,
+                image_element_key: 0,
             }
         })
     }
@@ -260,6 +207,11 @@ impl Render for InfoSection {
             )
         });
 
+        let image_key = self
+            .current_track_path
+            .as_ref()
+            .map(|p| ManagedImageKey::TrackFile(p.clone()));
+        let image_element_key = self.image_element_key;
         let theme = cx.global::<Theme>();
         let state = self.playback_info.playback_state.read(cx);
         let album_navigation_track = self
@@ -302,36 +254,37 @@ impl Render for InfoSection {
                                     cx.notify();
                                 }
                             }))
-                            .when(self.albumart_actual.is_some(), |this: Stateful<Div>| {
-                                this.when(
-                                    self.is_hovering_art && self.albumart_original.is_some(),
-                                    |this: Stateful<Div>| {
-                                        this.child(
-                                            anchored().anchor(Corner::BottomRight).child(deferred(
-                                                div()
-                                                    .id("album-art-preview")
-                                                    .occlude()
-                                                    .pb(px(26.0))
-                                                    .child(
-                                                        img(self
-                                                            .albumart_original
-                                                            .clone()
-                                                            .unwrap())
-                                                        .w(px(256.0))
-                                                        .max_h(px(256.0))
-                                                        .rounded(px(10.0))
-                                                        .shadow_md(),
-                                                    ),
-                                            )),
-                                        )
-                                    },
-                                )
+                            .when_some(image_key, |this: Stateful<Div>, key| {
+                                this.when(self.is_hovering_art, |this: Stateful<Div>| {
+                                    this.child(
+                                        anchored().anchor(Corner::BottomRight).child(deferred(
+                                            div()
+                                                .id("album-art-preview")
+                                                .occlude()
+                                                .pb(px(26.0))
+                                                .child(
+                                                    managed_image(
+                                                        (
+                                                            "album-art-preview-img",
+                                                            image_element_key,
+                                                        ),
+                                                        key.clone(),
+                                                    )
+                                                    .w(px(256.0))
+                                                    .h(px(256.0))
+                                                    .rounded(px(10.0))
+                                                    .shadow_md(),
+                                                ),
+                                        )),
+                                    )
+                                })
                                 .child(
-                                    img(self.albumart_actual.clone().unwrap())
+                                    managed_image(("album-art-thumb", image_element_key), key)
                                         .w(px(36.0))
                                         .h(px(36.0))
                                         .object_fit(ObjectFit::Fill)
-                                        .rounded(px(4.0)),
+                                        .rounded(px(4.0))
+                                        .thumb(),
                                 )
                             }),
                     )
@@ -438,6 +391,7 @@ fn update_current_track_state(
         .as_ref()
         .and_then(|track| track.album_id)
         .is_some_and(|album_id| cx.artist_id_for_album(album_id).is_ok());
+    this.image_element_key = this.image_element_key.wrapping_add(1);
 }
 
 pub struct PlaybackSection {

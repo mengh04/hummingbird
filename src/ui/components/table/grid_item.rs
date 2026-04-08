@@ -148,7 +148,7 @@ where
             .bg(theme.album_art_background)
             .overflow_hidden();
 
-        if let Some(image) = self.image_key {
+        if let Some(image) = self.image_key.clone() {
             img_container = img_container.child(
                 managed_image((self.id.clone(), "grid_image"), image)
                     .w_full()

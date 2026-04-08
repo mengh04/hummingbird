@@ -6,7 +6,7 @@ use gpui::{
     IntoElement, LayoutId, ParentElement, Pixels, Render, RenderImage, Stateful, StyleRefinement,
     Styled, Window,
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
 pub fn prune_views<T>(
@@ -59,17 +59,44 @@ pub fn create_or_retrieve_view<T>(
 where
     T: Render,
 {
-    let view = views_model.read(cx).get(&idx).cloned();
+    create_or_retrieve_view_keyed(views_model, idx, creation_fn, cx)
+}
+
+pub fn create_or_retrieve_view_keyed<T>(
+    views_model: &Entity<FxHashMap<usize, Entity<T>>>,
+    key: usize,
+    creation_fn: impl FnOnce(&mut App) -> Entity<T>,
+    cx: &mut App,
+) -> Entity<T>
+where
+    T: Render,
+{
+    let view = views_model.read(cx).get(&key).cloned();
     match view {
         Some(view) => view,
         None => {
             let view = creation_fn(cx);
             views_model.update(cx, |m, _| {
-                m.insert(idx, view.clone());
+                m.insert(key, view.clone());
             });
             view
         }
     }
+}
+
+/// Removes all views from the map whose key is not in `valid_keys`, used when items are keyed
+/// by their ID instead of their index
+pub fn retain_views<T>(
+    views_model: &Entity<FxHashMap<usize, Entity<T>>>,
+    valid_keys: &[usize],
+    cx: &mut App,
+) where
+    T: Render,
+{
+    let key_set: FxHashSet<usize> = valid_keys.iter().copied().collect();
+    views_model.update(cx, |m, _| {
+        m.retain(|k, _| key_set.contains(k));
+    });
 }
 
 pub fn drop_image_from_app(cx: &mut App, image: Arc<RenderImage>) {

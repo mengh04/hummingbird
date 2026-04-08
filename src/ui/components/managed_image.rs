@@ -1,33 +1,87 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
 use gpui::{
     App, Bounds, Corners, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, ObjectFit, Pixels, Refineable, RenderImage, Style, StyleRefinement, Styled, Window,
 };
-use image::{Frame, ImageResult};
+use image::{Frame, imageops};
 use smallvec::SmallVec;
 use sqlx::SqlitePool;
 use tracing::error;
 
 use crate::{
-    ui::{app::Pool, util::drop_image_from_app},
+    media::{lookup_table::try_open_media, traits::MediaProviderFeatures},
+    ui::{
+        app::Pool,
+        util::{drop_image_from_app, find_art_file_for_path},
+    },
     util::rgb_to_bgr,
 };
 
-#[derive(Clone, Copy)]
+fn decode_rgba_to_render_image(mut image: image::RgbaImage) -> anyhow::Result<Arc<RenderImage>> {
+    rgb_to_bgr(&mut image);
+    let mut frames: SmallVec<[_; 1]> = SmallVec::new();
+    frames.push(Frame::new(image));
+    Ok(Arc::new(RenderImage::new(frames)))
+}
+
+fn decode_to_render_image(data: &[u8]) -> anyhow::Result<Arc<RenderImage>> {
+    let image = image::load_from_memory(data)?.to_rgba8();
+    decode_rgba_to_render_image(image)
+}
+
+#[derive(Clone)]
 pub enum ManagedImageKey {
     Album(i64),
+    TrackFile(PathBuf),
 }
 
 impl ManagedImageKey {
-    async fn retrieve(&self, pool: SqlitePool) -> anyhow::Result<Option<Arc<RenderImage>>> {
+    async fn retrieve(
+        &self,
+        pool: SqlitePool,
+        thumb: bool,
+    ) -> anyhow::Result<Option<Arc<RenderImage>>> {
         match self {
+            ManagedImageKey::TrackFile(path) => {
+                let path = path.clone();
+                crate::RUNTIME
+                    .spawn_blocking(move || -> anyhow::Result<Option<Arc<RenderImage>>> {
+                        let Some(mut stream) =
+                            try_open_media(&path, MediaProviderFeatures::PROVIDES_METADATA)?
+                        else {
+                            return Ok(None);
+                        };
+                        stream.start_playback()?;
+
+                        let mut image = if let Ok(Some(data)) = stream.read_image() {
+                            image::load_from_memory(&data)?.to_rgba8()
+                        } else if let Some(cover_path) = find_art_file_for_path(&path) {
+                            let data = std::fs::read(&*cover_path)?;
+                            image::load_from_memory(&data)?.to_rgba8()
+                        } else {
+                            return Ok(None);
+                        };
+
+                        if thumb {
+                            image = imageops::thumbnail(&image, 72, 72);
+                        }
+
+                        Ok(Some(decode_rgba_to_render_image(image)?))
+                    })
+                    .await?
+            }
             ManagedImageKey::Album(id) => {
+                let query = if thumb {
+                    include_str!("../../../queries/assets/find_album_thumb.sql")
+                } else {
+                    include_str!("../../../queries/assets/find_album_art.sql")
+                };
                 let Some((image_encoded,)): Option<(Vec<u8>,)> =
-                    sqlx::query_as(include_str!("../../../queries/assets/find_album_art.sql"))
-                        .bind(id)
-                        .fetch_optional(&pool)
-                        .await?
+                    sqlx::query_as(query).bind(id).fetch_optional(&pool).await?
                 else {
                     return Ok(None);
                 };
@@ -37,16 +91,7 @@ impl ManagedImageKey {
                 }
 
                 let image = crate::RUNTIME
-                    .spawn_blocking(move || {
-                        let mut image = image::load_from_memory(&image_encoded)?.to_rgba8();
-
-                        rgb_to_bgr(&mut image);
-
-                        let mut frames: SmallVec<[_; 1]> = SmallVec::new();
-                        frames.push(Frame::new(image));
-
-                        ImageResult::Ok(Some(Arc::new(RenderImage::new(frames))))
-                    })
+                    .spawn_blocking(move || decode_to_render_image(&image_encoded).map(Some))
                     .await??;
 
                 Ok(image)
@@ -73,11 +118,17 @@ pub struct ManagedImage {
     id: ElementId,
     style: StyleRefinement,
     object_fit: ObjectFit,
+    thumb: bool,
 }
 
 impl ManagedImage {
     pub fn object_fit(mut self, object_fit: ObjectFit) -> Self {
         self.object_fit = object_fit;
+        self
+    }
+
+    pub fn thumb(mut self) -> Self {
+        self.thumb = true;
         self
     }
 }
@@ -115,14 +166,15 @@ impl Element for ManagedImage {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let key = self.key;
+        let key = self.key.clone();
+        let thumb = self.thumb;
         let entity = window.use_keyed_state("state", cx, move |_window, cx| {
             let pool = cx.global::<Pool>().0.clone();
             let bridge: ImageBridge = Arc::new(OnceLock::new());
             let bridge_clone = bridge.clone();
 
             let handle = crate::RUNTIME.spawn(async move {
-                let result = key.retrieve(pool).await;
+                let result = key.retrieve(pool, thumb).await;
                 let image = match &result {
                     Ok(img) => img.clone(),
                     Err(_) => None,
@@ -241,5 +293,6 @@ pub fn managed_image(id: impl Into<ElementId>, key: ManagedImageKey) -> ManagedI
         id: id.into(),
         style: StyleRefinement::default(),
         object_fit: ObjectFit::Cover,
+        thumb: false,
     }
 }
