@@ -95,6 +95,8 @@
   "NEXT_TRACK": "Další skladba",
   "NO_LYRICS": "Žádný text skladby",
   "PALETTE_SHOW_MORE": {
+    "one": "Zobrazit další {{count}}...",
+    "few": "Zobrazit další {{count}}...",
     "other": "Zobrazit dalších {{count}}..."
   },
   "PATREON": "Podpořte nás na Patreonu",
@@ -109,6 +111,8 @@
   "PLAYBACK_RG_FALLBACK_PREAMP": "Náhradný předzesilovač ReplayGain",
   "PLAYBACK_RG_FALLBACK_PREAMP_SUBTEXT": "Použije se, když skladby nemají údaje ReplayGain.",
   "PLAYLIST_TRACK_COUNT": {
+    "one": "{{count}} skladba",
+    "few": "{{count}} skladby",
     "other": "{{count}} skladeb"
   },
   "PLAY_FROM_HERE": "Přehrát odtud",
@@ -179,9 +183,13 @@
   "SORT_TITLE": "Název",
   "STABLE": "Stabilní",
   "STATS_TOTAL_LENGTH": {
+    "one": "{{count}} minuta",
+    "few": "{{count}} minuty",
     "other": "{{count}} minut"
   },
   "STATS_TRACKS": {
+    "one": "{{count}} skladba",
+    "few": "{{count}} skladby",
     "other": "{{count}} skladeb"
   },
   "STOP_REPEATING": "Zastavit opakování",
