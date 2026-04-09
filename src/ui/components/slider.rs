@@ -13,7 +13,6 @@ pub struct Slider {
     pub(self) value: f32,
     pub(self) on_change: Option<Rc<RefCell<ClickHandler>>>,
     pub(self) on_double_click: Option<Rc<RefCell<DoubleClickHandler>>>,
-    pub(self) hitbox: Option<Hitbox>,
 }
 
 impl Slider {
@@ -55,7 +54,7 @@ impl IntoElement for Slider {
 impl Element for Slider {
     type RequestLayoutState = ();
 
-    type PrepaintState = Bounds<Pixels>;
+    type PrepaintState = Hitbox;
 
     fn id(&self) -> Option<ElementId> {
         self.id.clone()
@@ -92,9 +91,7 @@ impl Element for Slider {
             ..Default::default()
         });
 
-        self.hitbox = Some(window.insert_hitbox(hitbox_bounds, HitboxBehavior::Normal));
-
-        hitbox_bounds
+        window.insert_hitbox(hitbox_bounds, HitboxBehavior::Normal)
     }
 
     fn paint(
@@ -103,7 +100,7 @@ impl Element for Slider {
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        hitbox_bounds: &mut Self::PrepaintState,
+        hitbox: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -117,7 +114,7 @@ impl Element for Slider {
         let mut corners = Corners::default();
         corners.refine(&self.style.corner_radii);
 
-        window.set_cursor_style(CursorStyle::PointingHand, self.hitbox.as_ref().unwrap());
+        window.set_cursor_style(CursorStyle::PointingHand, hitbox);
 
         window.paint_quad(quad(
             bounds,
@@ -155,13 +152,12 @@ impl Element for Slider {
                         .unwrap_or_else(|| Rc::new(RefCell::new((false, Instant::now()))));
                     let func = func.clone();
                     let func_copy = func.clone();
-                    let func_final = func.clone();
 
                     let drag_state_1 = drag_state.clone();
-                    let hitbox_bounds = *hitbox_bounds;
+                    let hitbox = hitbox.clone();
 
                     cx.on_mouse_event(move |ev: &MouseDownEvent, _, window, cx| {
-                        if !hitbox_bounds.contains(&ev.position) {
+                        if !hitbox.is_hovered(window) {
                             return;
                         }
 
@@ -205,17 +201,9 @@ impl Element for Slider {
 
                     let drag_state_3 = drag_state.clone();
 
-                    cx.on_mouse_event(move |ev: &MouseUpEvent, _, window, cx| {
+                    cx.on_mouse_event(move |_ev: &MouseUpEvent, _, _window, _cx| {
                         let mut state = drag_state_3.borrow_mut();
-                        if state.0 {
-                            let relative = ev.position - bounds.origin;
-                            let relative_x: f32 = relative.x.into();
-                            let width: f32 = bounds.size.width.into();
-                            let value = (relative_x / width).clamp(0.0, 1.0);
-
-                            (func_final.borrow_mut())(value, window, cx);
-                            state.0 = false;
-                        }
+                        state.0 = false;
                     });
 
                     ((), if id.is_some() { Some(drag_state) } else { None })
@@ -232,6 +220,5 @@ pub fn slider() -> Slider {
         value: 0.0,
         on_change: None,
         on_double_click: None,
-        hitbox: None,
     }
 }
