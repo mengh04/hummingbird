@@ -14,20 +14,21 @@ use crate::{
         playlist::export_playlist,
         types::{PlaylistType, PlaylistWithCount},
     },
+    playback::interface::PlaybackInterface,
     settings::SettingsGlobal,
     ui::{
         components::{
             button::{ButtonIntent, button},
             context::context,
-            icons::{CROSS, FILE_EXPORT, PENCIL, PLAYLIST, PLUS, STAR},
-            menu::{menu, menu_item},
+            icons::{CROSS, FILE_EXPORT, PENCIL, PLAY, PLAYLIST, PLUS, SHUFFLE, STAR},
+            menu::{menu, menu_item, menu_separator},
             popover::{PopoverPosition, popover},
             scrollbar::{RightPad, floating_scrollbar},
             sidebar::sidebar_item,
             textbox::Textbox,
         },
-        library::{NavigationHistory, ViewSwitchMessage},
-        models::{Models, PlaylistEvent},
+        library::{NavigationHistory, ViewSwitchMessage, playlist_view::find_playlist_tracks},
+        models::{Models, PlaybackInfo, PlaylistEvent},
         theme::Theme,
     },
 };
@@ -253,6 +254,52 @@ impl Render for PlaylistList {
                         context(("playlist", pl_id as usize)).with(item).child(
                             div().bg(theme.elevated_background).child(
                                 menu()
+                                    .item(menu_item(
+                                        "playlist_play",
+                                        Some(PLAY),
+                                        tr!("PLAY"),
+                                        move |_, _, cx| {
+                                            let tracks = find_playlist_tracks(cx, pl_id);
+                                            let interface = cx.global::<PlaybackInterface>();
+                                            interface.replace_queue(tracks);
+                                        },
+                                    ))
+                                    .item(menu_item(
+                                        "playlist_play_next",
+                                        None::<&'static str>,
+                                        tr!("PLAY_NEXT"),
+                                        move |_, _, cx| {
+                                            let tracks = find_playlist_tracks(cx, pl_id);
+                                            let queue_position =
+                                                cx.global::<Models>().queue.read(cx).position;
+                                            let interface = cx.global::<PlaybackInterface>();
+                                            interface.insert_list_at(tracks, queue_position + 1);
+                                        },
+                                    ))
+                                    .item(menu_item(
+                                        "playlist_shuffle",
+                                        Some(SHUFFLE),
+                                        tr!("SHUFFLE"),
+                                        move |_, _, cx| {
+                                            let tracks = find_playlist_tracks(cx, pl_id);
+                                            let interface = cx.global::<PlaybackInterface>();
+                                            if !(*cx.global::<PlaybackInfo>().shuffling.read(cx)) {
+                                                interface.toggle_shuffle();
+                                            }
+                                            interface.replace_queue(tracks);
+                                        },
+                                    ))
+                                    .item(menu_item(
+                                        "playlist_add_to_queue",
+                                        Some(PLUS),
+                                        tr!("ADD_TO_QUEUE"),
+                                        move |_, _, cx| {
+                                            let tracks = find_playlist_tracks(cx, pl_id);
+                                            let interface = cx.global::<PlaybackInterface>();
+                                            interface.queue_list(tracks);
+                                        },
+                                    ))
+                                    .item(menu_separator())
                                     .when(!is_system_playlist, |menu| {
                                         menu.item(menu_item(
                                             "rename_playlist",
@@ -449,6 +496,7 @@ impl Render for PlaylistList {
         );
 
         div()
+            .gap(px(2.0))
             .mt(px(-6.0))
             .flex()
             .flex_col()

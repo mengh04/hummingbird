@@ -521,3 +521,16 @@ impl Render for PlaylistView {
             )
     }
 }
+
+pub fn find_playlist_tracks(cx: &mut App, playlist_id: i64) -> Vec<QueueItemData> {
+    let playlist_track_ids = cx.get_playlist_tracks(playlist_id).unwrap_or_default();
+    let track_files = cx.get_playlist_track_files(playlist_id).unwrap_or_default();
+
+    playlist_track_ids
+        .iter()
+        .zip(track_files.iter())
+        .map(|((_, track_id, album_id), path)| {
+            QueueItemData::new(cx, path.into(), Some(*track_id), Some(*album_id))
+        })
+        .collect()
+}
