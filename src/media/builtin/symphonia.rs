@@ -130,14 +130,13 @@ fn parse_fixed_u8(value: &str, len: usize) -> Option<u8> {
 fn parse_iso_release_date(value: &str) -> Result<Option<ParsedReleaseDate>, ()> {
     let value = value.trim();
 
-    if !value
-        .bytes()
-        .all(|byte| byte.is_ascii_digit() || byte == b'-')
-    {
+    if !value.bytes().all(|byte| {
+        byte.is_ascii_digit() || byte == b'-' || byte == b'.' || byte == b'/' || byte == b'_'
+    }) {
         return Ok(None);
     }
 
-    let mut parts = value.split('-');
+    let mut parts = value.split(['-', '.', '/', '_']);
     let first = parts.next().ok_or(())?;
     let second = parts.next();
     let third = parts.next();
