@@ -152,7 +152,7 @@ fn select_unstable_asset(
     channel_switched: bool,
 ) -> Option<Asset> {
     let asset = platform_asset(build.platform_package, release_info).cloned();
-    let minimum_acceptable_time = build.build_time + Duration::hours(2);
+    let minimum_acceptable_time = build.build_time + Duration::minutes(30);
 
     if let Some(asset) = asset
         && (channel_switched || build.always_update || asset.updated_at > minimum_acceptable_time)
