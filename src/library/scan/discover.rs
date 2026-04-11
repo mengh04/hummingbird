@@ -228,9 +228,6 @@ pub async fn cleanup_with_exclusions(
         .keys()
         .filter(|path| {
             !(path.exists())
-                && !path
-                    .canonicalize_utf8()
-                    .map_or(true, |p| p.file_name() == path.file_name())
                 && !canonicalized_roots
                     .iter()
                     .any(|excluded_root| path.starts_with(excluded_root))

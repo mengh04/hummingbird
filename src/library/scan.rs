@@ -320,8 +320,6 @@ async fn run_scanner(
             is_force, scan_settings
         );
 
-        let time_start = std::time::Instant::now();
-
         let (available_paths, missing_paths): (Vec<Utf8PathBuf>, Vec<Utf8PathBuf>) = scan_settings
             .paths
             .iter()
@@ -346,6 +344,9 @@ async fn run_scanner(
             &[]
         };
 
+        let time_start = std::time::Instant::now();
+        let cleanup_start = std::time::Instant::now();
+
         let _ = event_tx.send(ScanEvent::Cleaning);
 
         let mut updated_playlists =
@@ -357,6 +358,9 @@ async fn run_scanner(
                 updated_playlists.into_iter().collect(),
             ));
         }
+
+        let cleanup_duration = std::time::Instant::now() - cleanup_start;
+        info!("Cleanup took {:?}", cleanup_duration);
 
         scan_record.directories = scan_settings.paths.clone();
         let checkpoint_dirs = scan_record.directories.clone();
